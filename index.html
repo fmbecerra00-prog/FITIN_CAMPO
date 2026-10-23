@@ -1,0 +1,147 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TURBOFLIT | Gestión integral</title>
+<style>
+:root{--navy:#142b49;--blue:#2864e8;--bg:#f3f6fb;--green:#07866d}
+*{box-sizing:border-box}
+body{margin:0;font:15px Arial,sans-serif;background:var(--bg);color:#1d2d43}
+header{background:var(--navy);color:white;padding:20px 24px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+header h1{margin:0;font-size:23px}
+header p{margin:5px 0 0;color:#c6d4e9;font-size:13px}
+.layout{display:flex;min-height:calc(100vh - 75px)}
+nav{background:var(--navy);width:215px;padding:18px 12px;flex-shrink:0}
+nav button{display:block;width:100%;text-align:left;padding:13px 12px;border:0;border-radius:8px;background:transparent;color:#dce6f5;cursor:pointer;margin-bottom:5px;font-size:14px}
+nav button.active,nav button:hover{background:#28518a;color:white}
+main{padding:25px;width:100%;min-width:0}
+h2{margin-top:0}
+.muted{color:#718096;font-size:13px}
+.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:20px 0}
+.card,.panel{background:white;border:1px solid #e3eaf3;border-radius:12px;padding:18px;box-shadow:0 3px 12px #142b4908}
+.card span{font-size:13px;color:#718096}
+.card strong{display:block;font-size:27px;margin-top:9px}
+.panel{margin-top:18px;overflow:hidden}
+.panel-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+button,.btn{cursor:pointer}
+.primary{background:var(--blue);color:white;border:0;border-radius:7px;padding:10px 14px}
+.secondary{background:white;border:1px solid #d7e0ec;border-radius:7px;padding:9px 12px;color:#243650}
+input,select{padding:10px;border:1px solid #d5deea;border-radius:7px;max-width:100%;min-width:0}
+.form{display:flex;gap:9px;flex-wrap:wrap;margin:16px 0}
+.form input,.form select{flex:1}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:520px}
+th,td{text-align:left;padding:12px 10px;border-bottom:1px solid #edf1f6;font-size:13px}
+th{background:#f7f9fc;color:#52627a}
+.tag{background:#e1f5ed;color:#08765f;padding:5px 8px;border-radius:20px;font-size:12px}
+.warning{background:#fff0e7;color:#b34d18}
+.page{display:none}.page.active{display:block}
+.empty{padding:30px;text-align:center;color:#718096}
+footer{padding:18px;color:#718096;font-size:12px}
+@media(max-width:800px){
+ .layout{display:block}nav{width:100%;display:flex;overflow-x:auto;padding:8px;gap:5px}
+ nav button{width:auto;white-space:nowrap;margin:0}
+ main{padding:15px}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}
+ header{padding:16px}header h1{font-size:20px}
+}
+@media(max-width:420px){.cards{grid-template-columns:1fr 1fr}.card{padding:12px}.card strong{font-size:23px}}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>◆ TURBOFLIT</h1><p>Sistema de gestión integral</p></div>
+  <span>Mi empresa</span>
+</header>
+<div class="layout">
+<nav>
+  <button class="active" data-page="inicio">⌂ Inicio</button>
+  <button data-page="stock">▦ Stock</button>
+  <button data-page="produccion">⚙ Producción</button>
+  <button data-page="pedidos">🛒 Pedidos y ventas</button>
+  <button data-page="consignaciones">⇄ Consignaciones</button>
+</nav>
+<main>
+<section id="inicio" class="page active">
+  <h2>Panel principal</h2>
+  <p class="muted">Resumen de la actividad de TURBOFLIT</p>
+  <div class="cards">
+    <div class="card"><span>Productos registrados</span><strong id="total">0</strong></div>
+    <div class="card"><span>Unidades en stock</span><strong id="unidades">0</strong></div>
+    <div class="card"><span>Órdenes de producción</span><strong id="ordenes">0</strong></div>
+    <div class="card"><span>Pedidos registrados</span><strong id="npedidos">0</strong></div>
+  </div>
+  <div class="panel"><h3>Bienvenida</h3><p>Desde el menú podés administrar tus productos, registrar producción, cargar pedidos y llevar el control de consignaciones.</p><p class="muted">Versión inicial de prueba. Los datos se guardan en este navegador.</p></div>
+</section>
+
+<section id="stock" class="page">
+  <h2>Stock e inventario</h2>
+  <p class="muted">Registrá productos y sus ubicaciones.</p>
+  <div class="panel">
+    <h3>Nuevo producto</h3>
+    <form id="formProducto" class="form">
+      <input id="codigo" placeholder="Código" required>
+      <input id="producto" placeholder="Nombre del producto" required>
+      <input id="cantidad" type="number" min="0" placeholder="Cantidad inicial" required>
+      <input id="ubicacion" placeholder="Ubicación / depósito" required>
+      <button class="primary">Agregar</button>
+    </form>
+  </div>
+  <div class="panel"><div class="panel-head"><h3>Productos registrados</h3><input id="buscar" placeholder="Buscar producto..."></div>
+  <div class="table-wrap"><table><thead><tr><th>Código</th><th>Producto</th><th>Ubicación</th><th>Stock</th><th>Acción</th></tr></thead><tbody id="tablaStock"></tbody></table></div></div>
+</section>
+
+<section id="produccion" class="page">
+  <h2>Producción</h2><p class="muted">Registrá órdenes de fabricación y su estado.</p>
+  <div class="panel"><h3>Nueva orden</h3>
+  <form id="formProduccion" class="form"><input id="prodNombre" placeholder="Producto a fabricar" required><input id="prodCantidad" type="number" min="1" placeholder="Cantidad" required><select id="prodEstado"><option>Planificada</option><option>En proceso</option><option>Finalizada</option></select><button class="primary">Crear orden</button></form>
+  <div class="table-wrap"><table><thead><tr><th>Número</th><th>Producto</th><th>Cantidad</th><th>Estado</th></tr></thead><tbody id="tablaProduccion"></tbody></table></div></div>
+</section>
+
+<section id="pedidos" class="page">
+  <h2>Pedidos y ventas</h2><p class="muted">Registrá los pedidos de tus clientes.</p>
+  <div class="panel"><h3>Nuevo pedido</h3>
+  <form id="formPedido" class="form"><input id="cliente" placeholder="Cliente" required><input id="pedidoProducto" placeholder="Producto" required><input id="pedidoCantidad" type="number" min="1" placeholder="Cantidad" required><select id="pedidoEstado"><option>Pendiente</option><option>En preparación</option><option>Entregado</option></select><button class="primary">Guardar pedido</button></form>
+  <div class="table-wrap"><table><thead><tr><th>Número</th><th>Cliente</th><th>Producto</th><th>Cantidad</th><th>Estado</th></tr></thead><tbody id="tablaPedidos"></tbody></table></div></div>
+</section>
+
+<section id="consignaciones" class="page">
+  <h2>Consignaciones</h2><p class="muted">Controlá la mercadería entregada a terceros y sus devoluciones previstas.</p>
+  <div class="panel"><h3>Nueva consignación</h3>
+  <form id="formConsigna" class="form"><input id="consCliente" placeholder="Cliente / destinatario" required><input id="consProducto" placeholder="Producto" required><input id="consCantidad" type="number" min="1" placeholder="Cantidad" required><label style="font-size:12px">Devolución prevista<input id="consFecha" type="date" required></label><button class="primary">Registrar</button></form>
+  <div class="table-wrap"><table><thead><tr><th>Destinatario</th><th>Producto</th><th>Cantidad</th><th>Devolución prevista</th><th>Estado</th></tr></thead><tbody id="tablaConsigna"></tbody></table></div></div>
+</section>
+<footer>TURBOFLIT · Versión inicial de demostración</footer>
+</main>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+let stock=JSON.parse(localStorage.getItem('tf_stock')||'[]');
+let produccion=JSON.parse(localStorage.getItem('tf_prod')||'[]');
+let pedidos=JSON.parse(localStorage.getItem('tf_ped')||'[]');
+let consignas=JSON.parse(localStorage.getItem('tf_cons')||'[]');
+function save(){localStorage.setItem('tf_stock',JSON.stringify(stock));localStorage.setItem('tf_prod',JSON.stringify(produccion));localStorage.setItem('tf_ped',JSON.stringify(pedidos));localStorage.setItem('tf_cons',JSON.stringify(consignas));render()}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function render(){
+ $('total').textContent=stock.length;
+ $('unidades').textContent=stock.reduce((a,p)=>a+Number(p.cantidad),0);
+ $('ordenes').textContent=produccion.length;
+ $('npedidos').textContent=pedidos.length;
+ const q=$('buscar').value.toLowerCase();
+ $('tablaStock').innerHTML=stock.map((p,i)=>({p,i})).filter(x=>(x.p.codigo+' '+x.p.nombre+' '+x.p.ubicacion).toLowerCase().includes(q)).map(({p,i})=>`<tr><td>${esc(p.codigo)}</td><td>${esc(p.nombre)}</td><td>${esc(p.ubicacion)}</td><td>${p.cantidad}</td><td><button class="secondary" onclick="borrar(${i})">Eliminar</button></td></tr>`).join('')||'<tr><td colspan="5" class="empty">Todavía no hay productos.</td></tr>';
+ $('tablaProduccion').innerHTML=produccion.map(p=>`<tr><td>${esc(p.id)}</td><td>${esc(p.nombre)}</td><td>${p.cantidad}</td><td><span class="tag">${esc(p.estado)}</span></td></tr>`).join('')||'<tr><td colspan="4" class="empty">Todavía no hay órdenes.</td></tr>';
+ $('tablaPedidos').innerHTML=pedidos.map(p=>`<tr><td>${esc(p.id)}</td><td>${esc(p.cliente)}</td><td>${esc(p.producto)}</td><td>${p.cantidad}</td><td><span class="tag">${esc(p.estado)}</span></td></tr>`).join('')||'<tr><td colspan="5" class="empty">Todavía no hay pedidos.</td></tr>';
+ $('tablaConsigna').innerHTML=consignas.map(p=>`<tr><td>${esc(p.cliente)}</td><td>${esc(p.producto)}</td><td>${p.cantidad}</td><td>${esc(p.fecha)}</td><td><span class="tag">Activa</span></td></tr>`).join('')||'<tr><td colspan="5" class="empty">Todavía no hay consignaciones.</td></tr>';
+}
+function borrar(i){if(confirm('¿Eliminar este producto?')){stock.splice(i,1);save()}}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button,.page').forEach(x=>x.classList.remove('active'));b.classList.add('active');$(b.dataset.page).classList.add('active')});
+$('formProducto').onsubmit=e=>{e.preventDefault();if(stock.some(p=>p.codigo===$('codigo').value.trim()))return alert('Ese código ya existe.');stock.push({codigo:$('codigo').value.trim(),nombre:$('producto').value.trim(),cantidad:Number($('cantidad').value),ubicacion:$('ubicacion').value.trim()});e.target.reset();save()};
+$('formProduccion').onsubmit=e=>{e.preventDefault();produccion.push({id:'PROD-'+String(produccion.length+1).padStart(3,'0'),nombre:$('prodNombre').value,cantidad:Number($('prodCantidad').value),estado:$('prodEstado').value});e.target.reset();save()};
+$('formPedido').onsubmit=e=>{e.preventDefault();pedidos.push({id:'PED-'+String(pedidos.length+1).padStart(3,'0'),cliente:$('cliente').value,producto:$('pedidoProducto').value,cantidad:Number($('pedidoCantidad').value),estado:$('pedidoEstado').value});e.target.reset();save()};
+$('formConsigna').onsubmit=e=>{e.preventDefault();consignas.push({cliente:$('consCliente').value,producto:$('consProducto').value,cantidad:Number($('consCantidad').value),fecha:$('consFecha').value});e.target.reset();save()};
+$('buscar').oninput=render;
+render();
+</script>
+</body>
+</html>
