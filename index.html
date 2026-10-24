@@ -65,6 +65,9 @@ td[contenteditable=true]:focus {outline:2px solid var(--primary)}
 .widget.span4 {grid-column:span 4}
 .widget .panel {height:100%}
 .widget canvas {max-height:340px}
+#availabilityChart {width:100%;max-height:420px}
+#inventoryTable td {white-space:nowrap}
+#availabilityChosen button {margin:3px}
 .editor-row {display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:10px;border:1px solid var(--border);border-radius:10px;padding:12px;margin:10px 0}
 .color-field {display:flex;gap:8px;align-items:center}
 .color-field input[type=color] {width:50px;height:38px;padding:2px}
@@ -161,6 +164,31 @@ footer {text-align:center;color:var(--muted);padding:22px}
       </div>
       <p id="productStatus" class="status"></p>
       <div id="productCard" class="grid"><p class="muted">Seleccioná un producto para ver sus datos.</p></div>
+    </div>
+    <div class="panel">
+      <h2>Inventario general de productos</h2>
+      <p class="muted">Listado consolidado por producto y código. Elegí las columnas de cada ubicación para que los totales coincidan con tus registros.</p>
+      <div class="design-grid no-print">
+        <div><label>Stock Trenque Lauquen</label><select id="locTrenque"></select></div>
+        <div><label>Stock en consignación</label><select id="locConsignacion"></select></div>
+        <div><label>Stock en fabricación</label><select id="locFabricacion"></select></div>
+        <div><label>Embarques (por fecha)</label><select id="locEmbarques"></select></div>
+      </div>
+      <div class="toolbar no-print"><button id="saveLocationsBtn" class="secondary">Guardar columnas de stock</button><button id="refreshInventoryBtn">Actualizar inventario</button></div>
+      <div id="inventoryStats" class="grid"></div>
+      <div id="inventoryTable" class="table-wrap"></div>
+    </div>
+    <div class="panel">
+      <h2>Disponibilidad por producto</h2>
+      <p class="muted">Elegí un producto y agregalo a la comparación. Podés sumar todos los productos que quieras; cada uno aparecerá en el gráfico para comparar sus existencias por ubicación.</p>
+      <div class="design-grid no-print">
+        <div><label>Producto para consultar</label><select id="availabilityProduct"></select></div>
+        <div style="display:flex;align-items:end"><button id="addAvailabilityBtn">Agregar a la comparación</button></div>
+        <div style="display:flex;align-items:end"><button id="clearAvailabilityBtn" class="secondary">Limpiar comparación</button></div>
+      </div>
+      <div id="availabilityChosen" class="toolbar"></div>
+      <div style="min-height:280px"><canvas id="availabilityChart" aria-label="Gráfico de disponibilidad por producto y ubicación"></canvas></div>
+      <p id="availabilityStatus" class="status"></p>
     </div>
     <div id="dashboardWidgets" class="widget-grid"></div>
   </section>
@@ -369,6 +397,7 @@ function makeDefaultBook() {
     widgets:[],
     stockConfig:{sheet:0,product:"",code:"",qty:""},
     productConfig:{sheet:0,name:"",code:"",stock:"",client:"",consign:""},
+    locationConfig:{trenque:"",consignacion:"",fabricacion:"",embarques:""},
     countConfig:{sheet:0,column:"",type:"rows",sumColumn:""}
   };
 }
@@ -527,6 +556,7 @@ async function loadBook() {
     widgets:Array.isArray(saved.widgets)?saved.widgets:[],
     countConfig:saved.countConfig||defaults.countConfig,
     productConfig:saved.productConfig||defaults.productConfig,
+    locationConfig:saved.locationConfig||defaults.locationConfig,
     stockConfig:saved.stockConfig||defaults.stockConfig
   };
 
@@ -827,6 +857,8 @@ function setupProductControls() {
   if(!c.client) $("productClientCol").value=guessCol(cols,["cliente"]);
   if(!c.consign) $("productConsignCol").value=guessCol(cols,["consignacion","consigna","consignado"]);
   renderProductOptions();
+  locationColumns();
+  renderInventory();
 }
 $("productSheet").onchange=()=>{
   book.productConfig={sheet:Number($("productSheet").value),name:"",code:"",stock:"",client:"",consign:""};
@@ -856,7 +888,84 @@ function renderProductOptions() {
   $("productFilter").onchange=()=>showProduct($("productFilter").value,c);
   if($("productFilter").value) showProduct($("productFilter").value,c);
   else $("productCard").innerHTML='<p class="muted">Seleccioná un producto para ver sus datos.</p>';
+  if($("inventoryTable") && $("locTrenque")) renderInventory();
 }
+let availabilityChartInstance = null;
+let comparedProducts = [];
+function locationColumns() {
+  const c=book.productConfig||{};
+  const cols=columns(activeRows(Number($("productSheet").value||c.sheet||0)));
+  const cfg=book.locationConfig||{};
+  const guesses={
+    trenque:guessCol(cols,["trenque lauquen","trenque","stock local","deposito","depósito"]),
+    consignacion:guessCol(cols,["consignacion","consignación","consignado"]),
+    fabricacion:guessCol(cols,["fabricacion","fabricación","en fabricacion","en fabricación"]),
+    embarques:guessCol(cols,["embarques","embarque","envio","envío","en transito","tránsito"])
+  };
+  [["locTrenque","trenque"],["locConsignacion","consignacion"],["locFabricacion","fabricacion"],["locEmbarques","embarques"]].forEach(([id,key])=>{
+    fillSelect(id,cols,cfg[key]||guesses[key]);
+  });
+}
+function selectedLocationConfig() {
+  return {trenque:$("locTrenque").value,consignacion:$("locConsignacion").value,fabricacion:$("locFabricacion").value,embarques:$("locEmbarques").value};
+}
+function inventoryRows() {
+  const c={sheet:Number($("productSheet").value||0),name:$("productNameCol").value,code:$("productCodeCol").value};
+  const loc=selectedLocationConfig();
+  const grouped=new Map();
+  activeRows(c.sheet).forEach(r=>{
+    const name=String(r[c.name]??"").trim(); if(!name) return;
+    const code=String(r[c.code]??"").trim();
+    const key=name.toLocaleLowerCase("es")+"|"+code;
+    if(!grouped.has(key)) grouped.set(key,{name,code,trenque:0,consignacion:0,fabricacion:0,embarques:0});
+    const item=grouped.get(key);
+    Object.keys(loc).forEach(k=>{if(loc[k]) item[k]+=numberValue(r[loc[k]]);});
+  });
+  return [...grouped.values()].sort((a,b)=>a.name.localeCompare(b.name,"es"));
+}
+function renderInventory() {
+  const rows=inventoryRows();
+  const total=rows.reduce((sum,r)=>sum+r.trenque+r.consignacion+r.fabricacion+r.embarques,0);
+  $("inventoryStats").innerHTML=[
+    ["Total de productos ofrecidos",rows.length,"Productos únicos según nombre y código"],
+    ["Stock total consolidado",total,"Suma de las ubicaciones configuradas"]
+  ].map(([a,b,c])=>`<div class="stat"><span class="muted">${esc(a)}</span><strong>${esc(b)}</strong><small>${esc(c)}</small></div>`).join("");
+  const headers=["Producto","Código","Stock total","Trenque Lauquen","Consignación","En fabricación","Embarques por fecha"];
+  $("inventoryTable").innerHTML='<table><thead><tr>'+headers.map(h=>`<th>${esc(h)}</th>`).join("")+'</tr></thead><tbody>'+rows.map(r=>{
+    const totalRow=r.trenque+r.consignacion+r.fabricacion+r.embarques;
+    return `<tr><td>${esc(r.name)}</td><td>${esc(r.code||"—")}</td><td><strong>${totalRow}</strong></td><td>${r.trenque}</td><td>${r.consignacion}</td><td>${r.fabricacion}</td><td>${r.embarques}</td></tr>`;
+  }).join("")+'</tbody></table>';
+  renderAvailabilityOptions();
+}
+function renderAvailabilityOptions() {
+  const c={sheet:Number($("productSheet").value||0),name:$("productNameCol").value};
+  const products=[...new Set(activeRows(c.sheet).map(r=>String(r[c.name]??"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"es"));
+  const old=$("availabilityProduct").value;
+  $("availabilityProduct").innerHTML='<option value="">— Elegir producto —</option>'+products.map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join("");
+  if(products.includes(old)) $("availabilityProduct").value=old;
+  renderAvailabilityChart();
+}
+function renderAvailabilityChart() {
+  const loc=selectedLocationConfig(), rows=inventoryRows();
+  const labels=["Trenque Lauquen","Embarques por fecha","Consignación","En fabricación"];
+  const keys=["trenque","embarques","consignacion","fabricacion"];
+  $("availabilityChosen").innerHTML=comparedProducts.length?comparedProducts.map(p=>`<span class="stat" style="padding:6px 10px;margin:0">${esc(p)} <button class="secondary" data-remove-product="${esc(p)}" aria-label="Quitar ${esc(p)}">×</button></span>`).join(""):'<span class="muted">Todavía no agregaste productos a la comparación.</span>';
+  $("availabilityChosen").querySelectorAll("[data-remove-product]").forEach(b=>b.onclick=()=>{comparedProducts=comparedProducts.filter(p=>p!==b.dataset.removeProduct);renderAvailabilityChart();});
+  const datasets=comparedProducts.map(product=>{
+    const r=rows.filter(x=>x.name===product).reduce((acc,x)=>{keys.forEach(k=>acc[k]+=x[k]);return acc;},{trenque:0,embarques:0,consignacion:0,fabricacion:0});
+    return {label:product,data:keys.map(k=>loc[k]?r[k]:0)};
+  });
+  if(availabilityChartInstance) availabilityChartInstance.destroy();
+  const canvas=$("availabilityChart");
+  if(window.Chart) availabilityChartInstance=new Chart(canvas,{type:"bar",data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:"bottom"},tooltip:{mode:"index",intersect:false}},scales:{y:{beginAtZero:true,title:{display:true,text:"Unidades"}},x:{title:{display:true,text:"Ubicación"}}}}});
+  $("availabilityStatus").textContent=comparedProducts.length?`${comparedProducts.length} producto(s) en comparación.`:"Elegí un producto y presioná “Agregar a la comparación”.";
+}
+$("addAvailabilityBtn").onclick=()=>{const p=$("availabilityProduct").value;if(!p){$("availabilityStatus").textContent="Primero elegí un producto.";return;}if(!comparedProducts.includes(p)) comparedProducts.push(p);renderAvailabilityChart();};
+$("clearAvailabilityBtn").onclick=()=>{comparedProducts=[];renderAvailabilityChart();};
+$("saveLocationsBtn").onclick=async()=>{book.locationConfig=selectedLocationConfig();try{await saveBook();renderInventory();$("productStatus").textContent="Columnas de stock guardadas.";}catch(e){$("productStatus").textContent="No se pudo guardar la configuración: "+e.message;}};
+$("refreshInventoryBtn").onclick=()=>{renderInventory();$("productStatus").textContent="Inventario actualizado.";};
+["locTrenque","locConsignacion","locFabricacion","locEmbarques"].forEach(id=>$(id).addEventListener("change",()=>{renderInventory();}));
+
 function showProduct(product,c) {
   if(!product) { $("productCard").innerHTML="";return; }
   const rows=activeRows(c.sheet).filter(r=>String(r[c.name]??"").trim()===product);
