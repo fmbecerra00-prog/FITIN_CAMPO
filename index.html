@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -103,7 +104,7 @@ footer {text-align:center;color:var(--muted);padding:22px}
     <button id="loginBtn" type="submit" style="width:100%;margin-top:16px">Iniciar sesión</button>
   </form>
   <p id="loginStatus" class="status" role="status"></p>
-  <small>Ingresá con un usuario habilitado en Supabase.</small>
+  <small>Ingresá con el correo y la contraseña de un usuario creado en Supabase Authentication.</small>
 </section>
 
 <section id="app">
@@ -307,3 +308,891 @@ footer {text-align:center;color:var(--muted);padding:22px}
 </section>
 
 <script>
+"use strict";
+
+/* CONFIGURACIÓN DE SUPABASE */
+const SUPABASE_URL = "https://jgyeckanfjrqdfvinoaj.supabase.co";
+const SUPABASE_KEY = "sb_publishable_lLv-CsOrjj-weMWJgM2QHw_LNaiA4SW";
+if (!window.supabase || typeof window.supabase.createClient !== "function") {
+  document.getElementById("loginStatus").textContent = "No se pudo cargar la librería de Supabase. Verificá tu conexión y recargá la página.";
+  throw new Error("Supabase JS no está disponible");
+}
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+});
+const $ = id => document.getElementById(id);
+
+const DEFAULT_DESIGN = {
+  title:"FITIN CAMPO",subtitle:"Gestión de productos y stock",
+  loginTitle:"FITIN CAMPO",loginSubtitle:"Gestión de productos y stock",
+  dashboardHeading:"Panel principal",recordsHeading:"Registros",stockHeading:"Stock actual",
+  primary:"#3157d5",header:"#18243a",bg:"#f3f5fa",card:"#ffffff",
+  text:"#202b3c",muted:"#6b7280",border:"#dfe4ed",
+  font:"Arial,sans-serif",fontSize:14,titleSize:28,width:1600,radius:14,logos:[]
+};
+const DEFAULT_LABELS = {dashboard:"Inicio",records:"Registros",stock:"Stock actual",design:"Diseño de página"};
+const COLORS = [
+  ["primary","Color principal"],["header","Encabezado y tablas"],
+  ["bg","Fondo"],["card","Paneles"],["text","Texto principal"],
+  ["muted","Texto secundario"],["border","Bordes"]
+];
+
+let currentUser = null;
+let busy = false;
+let activeTab = "dashboard";
+let book = makeDefaultBook();
+
+function makeDefaultBook() {
+  return {
+    sheets:[{name:"Registros",rows:[]}],
+    active:0,
+    design:{...DEFAULT_DESIGN,logos:[]},
+    tabLabels:{...DEFAULT_LABELS},
+    customTabs:[],
+    widgets:[],
+    stockConfig:{sheet:0,product:"",code:"",qty:""},
+    productConfig:{sheet:0,name:"",code:"",stock:"",client:"",consign:""},
+    countConfig:{sheet:0,column:"",type:"rows",sumColumn:""}
+  };
+}
+
+const esc = v => String(v??"").replace(/[&<>"']/g,c=>({
+  "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+}[c]));
+const norm = v => String(v??"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+const uid = () => "id_"+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const sheet = () => book.sheets[book.active] || book.sheets[0];
+const activeRows = i => book.sheets[Number(i)]?.rows || [];
+const columns = rows => {
+  const result=[];
+  (rows||[]).forEach(r=>Object.keys(r||{}).forEach(k=>{if(!result.includes(k))result.push(k)}));
+  return result;
+};
+function message(id,text,error=false) {
+  $(id).textContent=text;
+  $(id).className="status "+(error?"error":"success");
+}
+function numberValue(v) {
+  if(typeof v==="number") return Number.isFinite(v)?v:0;
+  let s=String(v??"").trim().replace(/\s/g,"");
+  if(!s) return 0;
+  if(s.includes(",")&&s.includes(".")) {
+    s=s.lastIndexOf(",")>s.lastIndexOf(".")?s.replace(/\./g,"").replace(",","."):s.replace(/,/g,"");
+  } else if(s.includes(",")) s=s.replace(",",".");
+  const n=Number(s);
+  return Number.isFinite(n)?n:0;
+}
+function localDate() {
+  return new Intl.DateTimeFormat("es-AR",{day:"2-digit",month:"2-digit",year:"numeric"}).format(new Date());
+}
+
+/* AUTENTICACIÓN */
+$("loginForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  if(busy) return;
+
+  // Supabase espera el correo normalizado; la contraseña no se modifica.
+  const email=$("email").value.trim().toLowerCase();
+  const password=$("password").value;
+  if(!email||!password) {
+    message("loginStatus","Ingresá tu correo y contraseña.",true);
+    return;
+  }
+
+  $("loginBtn").disabled=true;
+  $("loginBtn").textContent="Ingresando...";
+  message("loginStatus","Verificando acceso...");
+
+  try {
+    const {data,error}=await sb.auth.signInWithPassword({email,password});
+    if(error) throw error;
+    if(!data.user) throw new Error("Supabase no devolvió un usuario válido.");
+
+    currentUser=data.user;
+    await startApp();
+  } catch(err) {
+    console.error("Error de inicio de sesión:",err);
+    const raw = String(err?.message || "");
+    const lower = raw.toLowerCase();
+    let msg;
+    if (lower.includes("invalid login credentials")) {
+      msg = "Correo o contraseña incorrectos. En Supabase > Authentication > Users, verificá que el usuario exista. Si fue creado por invitación, completá la invitación y confirmá el correo si tu proyecto lo exige.";
+    } else if (lower.includes("email not confirmed")) {
+      msg = "El correo todavía no está confirmado. Revisá tu email o confirmá el usuario desde Supabase > Authentication > Users.";
+    } else if (lower.includes("failed to fetch") || lower.includes("networkerror")) {
+      msg = "No se pudo conectar con Supabase. Revisá tu conexión, la URL del proyecto y que el proyecto esté activo.";
+    } else if (lower.includes("invalid api key") || lower.includes("apikey")) {
+      msg = "Supabase rechazó la clave pública. Revisá SUPABASE_URL y SUPABASE_KEY en la configuración del archivo.";
+    } else {
+      msg = raw || "No se pudo iniciar sesión. Revisá la consola del navegador para ver el detalle.";
+    }
+    message("loginStatus",msg,true);
+  } finally {
+    $("loginBtn").disabled=false;
+    $("loginBtn").textContent="Iniciar sesión";
+  }
+});
+
+$("logoutBtn").addEventListener("click",async()=>{
+  try {
+    const {error}=await sb.auth.signOut();
+    if(error) throw error;
+    currentUser=null;
+    $("app").style.display="none";
+    $("login").style.display="block";
+    $("password").value="";
+    message("loginStatus","Sesión cerrada.");
+  } catch(err) {
+    alert("No se pudo cerrar la sesión: "+err.message);
+  }
+});
+
+sb.auth.onAuthStateChange((event,session)=>{
+  if(event==="SIGNED_OUT") {
+    currentUser=null;
+    $("app").style.display="none";
+    $("login").style.display="block";
+  }
+});
+
+/* CARGAR Y GUARDAR EN SUPABASE */
+async function loadBook() {
+  if(!currentUser) throw new Error("No hay una sesión autenticada.");
+
+  const {data,error}=await sb
+    .from("app_state")
+    .select("data")
+    .eq("id",1)
+    .maybeSingle();
+
+  if(error) throw new Error("Error al cargar datos: "+error.message);
+
+  if(!data || !data.data) {
+    book=makeDefaultBook();
+    return;
+  }
+
+  const saved=data.data;
+  const defaults=makeDefaultBook();
+
+  const loadedSheets=Array.isArray(saved.sheets)&&saved.sheets.length?saved.sheets:defaults.sheets;
+  // Repara hojas importadas anteriormente con columnas numeradas (0, 1, 2...):
+  // usa la primera fila como encabezados cuando contiene los nombres reales.
+  loadedSheets.forEach(sh=>{
+    if(!Array.isArray(sh.rows)||!sh.rows.length) return;
+    const cols=columns(sh.rows);
+    if(!cols.length||!cols.every(k=>/^\d+$/.test(String(k)))) return;
+    const first=sh.rows[0]||{};
+    const headers=cols.map(k=>String(first[k]??"").trim());
+    if(!headers.some(Boolean)) return;
+    const used=new Set();
+    const uniqueHeaders=headers.map((h,i)=>{
+      let name=h||`Columna ${i+1}`, base=name, n=2;
+      while(used.has(name)) name=`${base} (${n++})`;
+      used.add(name); return name;
+    });
+    sh.rows=sh.rows.slice(1).map(row=>{
+      const out={}; cols.forEach((k,i)=>out[uniqueHeaders[i]]=row[k]??""); return out;
+    });
+  });
+
+  book={
+    ...defaults,
+    ...saved,
+    sheets:loadedSheets,
+    design:{...DEFAULT_DESIGN,...(saved.design||{}),logos:Array.isArray(saved.design?.logos)?saved.design.logos:[]},
+    tabLabels:{...DEFAULT_LABELS,...(saved.tabLabels||{})},
+    customTabs:Array.isArray(saved.customTabs)?saved.customTabs:[],
+    widgets:Array.isArray(saved.widgets)?saved.widgets:[],
+    countConfig:saved.countConfig||defaults.countConfig,
+    productConfig:saved.productConfig||defaults.productConfig,
+    stockConfig:saved.stockConfig||defaults.stockConfig
+  };
+
+  book.active=Math.min(Math.max(0,Number(book.active)||0),book.sheets.length-1);
+}
+
+async function saveBook() {
+  if(!currentUser) throw new Error("Tu sesión no está activa.");
+
+  const payload={
+    id:1,
+    data:book,
+    updated_by:currentUser.id,
+    updated_at:new Date().toISOString()
+  };
+
+  const {error}=await sb.from("app_state").upsert(payload,{onConflict:"id"});
+  if(error) throw new Error("Error al guardar datos: "+error.message);
+}
+
+async function startApp() {
+  if(!currentUser||busy) return;
+  busy=true;
+
+  try {
+    message("loginStatus","Cargando tus registros...");
+    await loadBook();
+
+    $("userEmail").textContent=currentUser.email||"";
+    $("login").style.display="none";
+    $("app").style.display="block";
+
+    populateDesign();
+    applyDesign();
+    renderAll();
+    renderTabTitleEditor();
+    renderWidgetEditor();
+    showTab("dashboard");
+    $("loginStatus").textContent="";
+  } catch(err) {
+    console.error("Error al iniciar FITIN CAMPO:",err);
+    $("app").style.display="none";
+    $("login").style.display="block";
+    const raw=String(err?.message||"");
+    const lower=raw.toLowerCase();
+    let msg=raw||"No se pudo cargar la aplicación.";
+    if (lower.includes("app_state") || lower.includes("row-level security") || lower.includes("permission denied") || lower.includes("rls")) {
+      msg="El usuario y la contraseña fueron aceptados, pero Supabase bloqueó la lectura de los datos de FITIN CAMPO (tabla app_state). Hay que revisar que exista la tabla app_state y sus políticas RLS de SELECT/INSERT/UPDATE para usuarios autenticados. Detalle: "+raw;
+    }
+    message("loginStatus",msg,true);
+  } finally {
+    busy=false;
+  }
+}
+
+/* RESTAURAR SESIÓN AL ABRIR */
+(async()=>{
+  try {
+    const {data,error}=await sb.auth.getSession();
+    if(error) throw error;
+    if(data.session?.user) {
+      currentUser=data.session.user;
+      await startApp();
+    }
+  } catch(err) {
+    console.error("Error al restaurar sesión:",err);
+    message("loginStatus","No se pudo comprobar la sesión: "+err.message,true);
+  }
+})();
+
+/* PESTAÑAS */
+function allTabs() {
+  return [
+    {id:"dashboard",label:book.tabLabels.dashboard||"Inicio"},
+    {id:"records",label:book.tabLabels.records||"Registros"},
+    {id:"stock",label:book.tabLabels.stock||"Stock actual"},
+    ...book.customTabs,
+    {id:"design",label:book.tabLabels.design||"Diseño de página"}
+  ];
+}
+function renderTabs() {
+  $("tabs").innerHTML="";
+  allTabs().forEach(t=>{
+    const b=document.createElement("button");
+    b.textContent=t.label;
+    b.className=t.id===activeTab?"active":"";
+    b.onclick=()=>showTab(t.id);
+    $("tabs").appendChild(b);
+  });
+}
+function showTab(id) {
+  activeTab=id;
+  ["dashboardTab","recordsTab","stockTab","designTab","customTab"].forEach(x=>$(x).classList.add("hidden"));
+
+  if(["dashboard","records","stock","design"].includes(id)) {
+    $(id+"Tab").classList.remove("hidden");
+  } else {
+    $("customTab").classList.remove("hidden");
+    const t=book.customTabs.find(x=>x.id===id);
+    $("customHeading").textContent=t?.label||"Pestaña";
+    renderWidgetsInto("customWidgets",id);
+  }
+
+  renderTabs();
+  if(id==="records") renderRecords();
+  if(id==="dashboard") {
+    setupCountControls();setupProductControls();renderDashboard();renderWidgetsInto("dashboardWidgets","dashboard");
+  }
+  if(id==="stock") {setupStockControls();renderStock();}
+  if(id==="design") {renderTabTitleEditor();renderWidgetEditor();renderLogoEditor();renderLogos();}
+}
+
+/* REGISTROS */
+function renderSheetSelect() {
+  $("sheetSelect").innerHTML=book.sheets.map((s,i)=>`<option value="${i}">${esc(s.name)}</option>`).join("");
+  $("sheetSelect").value=String(book.active);
+}
+function renderAll() {
+  renderSheetSelect();
+  renderRecords();
+  setupCountControls();
+  setupProductControls();
+  setupStockControls();
+  renderDashboard();
+}
+$("sheetSelect").onchange=()=>{
+  book.active=Number($("sheetSelect").value);
+  renderRecords();renderDashboard();
+};
+function renderRecords() {
+  const s=sheet(),cols=columns(s.rows),q=$("searchInput").value.trim().toLowerCase();
+  const rows=s.rows.map((r,i)=>({r,i})).filter(x=>!q||Object.values(x.r).some(v=>String(v??"").toLowerCase().includes(q)));
+
+  if(!cols.length) {
+    $("recordsTable").innerHTML="<p style='padding:14px'>La hoja está vacía. Importá un Excel o agregá una columna.</p>";
+    return;
+  }
+
+  let html="<table><thead><tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"<th>Acciones</th></tr></thead><tbody>";
+  rows.forEach(x=>{
+    html+="<tr>"+cols.map(c=>`<td contenteditable="true" data-row="${x.i}" data-col="${esc(c)}">${esc(x.r[c]??"")}</td>`).join("")+
+      `<td><button class="danger" data-del="${x.i}">Eliminar</button></td></tr>`;
+  });
+  $("recordsTable").innerHTML=html+"</tbody></table>";
+
+  $("recordsTable").querySelectorAll("[contenteditable]").forEach(td=>{
+    td.onblur=()=>{
+      s.rows[Number(td.dataset.row)][td.dataset.col]=td.textContent.trim();
+    };
+    td.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();td.blur();}};
+  });
+
+  $("recordsTable").querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{
+    if(confirm("¿Eliminar esta fila?")) {
+      s.rows.splice(Number(b.dataset.del),1);
+      renderRecords();renderDashboard();
+    }
+  });
+}
+$("searchInput").oninput=renderRecords;
+$("addRowBtn").onclick=()=>{
+  let cols=columns(sheet().rows);
+  if(!cols.length) {
+    const name=prompt("Nombre de la primera columna:","Producto");
+    if(!name?.trim()) return;
+    cols=[name.trim()];
+  }
+  const row={};cols.forEach(c=>row[c]="");
+  sheet().rows.push(row);renderRecords();
+};
+$("addColumnBtn").onclick=()=>{
+  const name=prompt("Nombre de la nueva columna:");
+  if(!name?.trim()) return;
+  if(columns(sheet().rows).includes(name.trim())) {alert("La columna ya existe.");return;}
+  if(!sheet().rows.length) sheet().rows.push({[name.trim()]:""});
+  else sheet().rows.forEach(r=>r[name.trim()]="");
+  renderRecords();
+};
+$("newSheetBtn").onclick=()=>{
+  const n=prompt("Nombre de la nueva hoja:");
+  if(!n?.trim()) return;
+  book.sheets.push({name:n.trim(),rows:[]});
+  book.active=book.sheets.length-1;renderAll();
+};
+$("renameSheetBtn").onclick=()=>{
+  const n=prompt("Nuevo nombre:",sheet().name);
+  if(n?.trim()) {sheet().name=n.trim();renderSheetSelect();setupCountControls();setupProductControls();setupStockControls();}
+};
+$("deleteSheetBtn").onclick=()=>{
+  if(book.sheets.length<2) {alert("Debe quedar al menos una hoja.");return;}
+  if(confirm("¿Eliminar esta hoja y sus registros?")) {
+    book.sheets.splice(book.active,1);book.active=0;renderAll();
+  }
+};
+$("saveRecordsBtn").onclick=async()=>{
+  try {message("recordsStatus","Guardando...");await saveBook();message("recordsStatus","Registros guardados correctamente.");}
+  catch(e){message("recordsStatus",e.message,true);}
+};
+$("importBtn").onclick=()=>$("excelFile").click();
+$("excelFile").onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;
+  try {
+    const wb=XLSX.read(await f.arrayBuffer(),{type:"array"});
+    const matrix=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:"",raw:false});
+    if(!matrix.length) throw new Error("El archivo no contiene filas para importar.");
+    const rawHeaders=matrix[0].map(v=>String(v??"").trim());
+    const usedHeaders=new Set();
+    const headers=rawHeaders.map((h,i)=>{
+      let name=h||`Columna ${i+1}`,base=name,n=2;
+      while(usedHeaders.has(name)) name=`${base} (${n++})`;
+      usedHeaders.add(name);return name;
+    });
+    const rows=matrix.slice(1).filter(row=>row.some(v=>String(v??"").trim()!=="")).map(row=>{
+      const obj={};headers.forEach((h,i)=>obj[h]=row[i]??"");return obj;
+    });
+    const name=f.name.replace(/\.(xlsx|xls|csv)$/i,"");
+    let i=book.sheets.findIndex(s=>s.name===name);
+    if(i>=0) {
+      if(!confirm("Ya existe esa hoja. ¿Reemplazar sus registros?")) return;
+      book.sheets[i].rows=rows;
+    } else {
+      book.sheets.push({name,rows});i=book.sheets.length-1;
+    }
+    book.active=i;renderAll();
+    message("recordsStatus","Excel importado. Presioná Guardar registros para conservar los cambios.");
+  } catch(err) {
+    message("recordsStatus","Error al importar: "+err.message,true);
+  } finally {e.target.value="";}
+};
+$("exportBtn").onclick=()=>{
+  const ws=XLSX.utils.json_to_sheet(sheet().rows);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,(sheet().name||"Registros").slice(0,31));
+  XLSX.writeFile(wb,(sheet().name||"registros")+".xlsx");
+};
+
+/* SELECTORES */
+function fillSelect(id,cols,selected="") {
+  $(id).innerHTML='<option value="">— Seleccionar columna —</option>'+
+    cols.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("");
+  if(cols.includes(selected)) $(id).value=selected;
+}
+function fillSheetSelect(id,selected=0) {
+  $(id).innerHTML=book.sheets.map((s,i)=>`<option value="${i}">${esc(s.name)}</option>`).join("");
+  $(id).value=String(Math.min(Math.max(0,Number(selected)||0),book.sheets.length-1));
+}
+function guessCol(cols,terms) {
+  return cols.find(c=>terms.some(t=>norm(c).includes(t)))||"";
+}
+
+/* INDICADORES */
+function setupCountControls() {
+  const c=book.countConfig||{};
+  fillSheetSelect("countSheet",c.sheet||0);
+  const cols=columns(activeRows($("countSheet").value));
+  fillSelect("countColumn",cols,c.column);
+  fillSelect("countSumColumn",cols,c.sumColumn);
+  $("countType").value=c.type||"rows";
+}
+$("countSheet").onchange=()=>{
+  const cols=columns(activeRows($("countSheet").value));
+  fillSelect("countColumn",cols);fillSelect("countSumColumn",cols);renderDashboard();
+};
+["countColumn","countType","countSumColumn"].forEach(id=>$(id).onchange=renderDashboard);
+$("saveCountConfig").onclick=async()=>{
+  book.countConfig={sheet:Number($("countSheet").value),column:$("countColumn").value,type:$("countType").value,sumColumn:$("countSumColumn").value};
+  try {await saveBook();message("countStatus","Configuración guardada.");}
+  catch(e){message("countStatus",e.message,true);}
+};
+function renderDashboard() {
+  const c=book.countConfig||{},rows=activeRows(c.sheet??0),col=c.column||"";
+  let value=rows.length,label="Registros en la hoja";
+  if(c.type==="unique") {
+    value=new Set(rows.map(r=>String(r[col]??"").trim()).filter(Boolean)).size;
+    label="Valores únicos: "+(col||"columna no elegida");
+  }
+  if(c.type==="sum") {
+    value=rows.reduce((s,r)=>s+numberValue(r[c.sumColumn]),0);
+    label="Suma de "+(c.sumColumn||"columna no elegida");
+  }
+  $("defaultStats").innerHTML=[
+    ["Recuento configurado",value,label],
+    ["Registros en hoja activa",activeRows(book.active).length,sheet().name],
+    ["Hojas disponibles",book.sheets.length,"En esta aplicación"]
+  ].map(([a,b,c])=>`<div class="stat"><span class="muted">${esc(a)}</span><strong>${esc(b)}</strong><small>${esc(c)}</small></div>`).join("");
+}
+
+/* BUSCADOR DE PRODUCTOS */
+function setupProductControls() {
+  const c=book.productConfig||{};
+  fillSheetSelect("productSheet",c.sheet||0);
+  const cols=columns(activeRows($("productSheet").value));
+  fillSelect("productNameCol",cols,c.name);fillSelect("productCodeCol",cols,c.code);
+  fillSelect("productStockCol",cols,c.stock);fillSelect("productClientCol",cols,c.client);
+  fillSelect("productConsignCol",cols,c.consign);
+  if(!c.name) $("productNameCol").value=guessCol(cols,["producto","articulo","descripcion","nombre"]);
+  if(!c.code) $("productCodeCol").value=guessCol(cols,["codigo","sku","cod"]);
+  if(!c.stock) $("productStockCol").value=guessCol(cols,["stock","cantidad","existencia","unidades"]);
+  if(!c.client) $("productClientCol").value=guessCol(cols,["cliente"]);
+  if(!c.consign) $("productConsignCol").value=guessCol(cols,["consignacion","consigna","consignado"]);
+  renderProductOptions();
+}
+$("productSheet").onchange=()=>{
+  book.productConfig={sheet:Number($("productSheet").value),name:"",code:"",stock:"",client:"",consign:""};
+  setupProductControls();
+};
+["productNameCol","productCodeCol","productStockCol","productClientCol","productConsignCol"].forEach(id=>$(id).onchange=renderProductOptions);
+$("refreshProducts").onclick=()=>{setupProductControls();message("productStatus","Listado actualizado.");};
+$("saveProductConfig").onclick=async()=>{
+  book.productConfig={
+    sheet:Number($("productSheet").value),name:$("productNameCol").value,code:$("productCodeCol").value,
+    stock:$("productStockCol").value,client:$("productClientCol").value,consign:$("productConsignCol").value
+  };
+  try {await saveBook();message("productStatus","Configuración guardada.");}
+  catch(e){message("productStatus",e.message,true);}
+};
+function renderProductOptions() {
+  const c={
+    sheet:Number($("productSheet").value||0),name:$("productNameCol").value,
+    code:$("productCodeCol").value,stock:$("productStockCol").value,
+    client:$("productClientCol").value,consign:$("productConsignCol").value
+  };
+  const rows=activeRows(c.sheet);
+  const products=[...new Set(rows.map(r=>String(r[c.name]??"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"es"));
+  const old=$("productFilter").value;
+  $("productFilter").innerHTML='<option value="">— Elegir producto —</option>'+products.map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join("");
+  if(products.includes(old)) $("productFilter").value=old;
+  $("productFilter").onchange=()=>showProduct($("productFilter").value,c);
+  if($("productFilter").value) showProduct($("productFilter").value,c);
+  else $("productCard").innerHTML='<p class="muted">Seleccioná un producto para ver sus datos.</p>';
+}
+function showProduct(product,c) {
+  if(!product) { $("productCard").innerHTML="";return; }
+  const rows=activeRows(c.sheet).filter(r=>String(r[c.name]??"").trim()===product);
+  const unique=k=>[...new Set(rows.map(r=>String(r[k]??"").trim()).filter(Boolean))].join(", ")||"Sin dato";
+  const stock=c.stock?rows.reduce((s,r)=>s+numberValue(r[c.stock]),0):"No configurado";
+  const details=[
+    ["Producto",product],["Código",c.code?unique(c.code):"No configurado"],
+    ["Stock total",stock],["Cliente",c.client?unique(c.client):"No configurado"],
+    ["Consignación",c.consign?unique(c.consign):"No configurado"]
+  ];
+  $("productCard").innerHTML=details.map(([a,b])=>`<div class="stat"><span class="muted">${esc(a)}</span><strong style="font-size:20px">${esc(b)}</strong></div>`).join("");
+}
+
+/* STOCK ACTUAL */
+function setupStockControls() {
+  const c=book.stockConfig||{};
+  fillSheetSelect("stockSheetSelect",c.sheet||0);
+  const cols=columns(activeRows($("stockSheetSelect").value));
+  fillSelect("stockProductCol",cols,c.product);fillSelect("stockCodeCol",cols,c.code);fillSelect("stockQtyCol",cols,c.qty);
+  if(!c.product) $("stockProductCol").value=guessCol(cols,["producto","descripcion","articulo","nombre"]);
+  if(!c.code) $("stockCodeCol").value=guessCol(cols,["codigo","sku","cod"]);
+  if(!c.qty) $("stockQtyCol").value=guessCol(cols,["cantidad","stock","existencia","unidades"]);
+}
+$("stockSheetSelect").onchange=()=>{
+  book.stockConfig={sheet:Number($("stockSheetSelect").value),product:"",code:"",qty:""};
+  setupStockControls();renderStock();
+};
+["stockProductCol","stockCodeCol","stockQtyCol"].forEach((id,i)=>$(id).onchange=()=>{
+  book.stockConfig[["product","code","qty"][i]]=$(id).value;renderStock();
+});
+$("refreshStockBtn").onclick=()=>{
+  book.stockConfig={sheet:Number($("stockSheetSelect").value),product:$("stockProductCol").value,code:$("stockCodeCol").value,qty:$("stockQtyCol").value};
+  renderStock();
+};
+function getStockRows() {
+  const i=Number($("stockSheetSelect").value||0),rows=activeRows(i);
+  const p=$("stockProductCol").value,c=$("stockCodeCol").value,q=$("stockQtyCol").value;
+  if(!p||!c||!q) return {rows:[],error:"Seleccioná las columnas de producto, código y cantidad."};
+  const map=new Map();
+  rows.forEach(r=>{
+    const product=String(r[p]??"").trim(),code=String(r[c]??"").trim();
+    if(!product&&!code) return;
+    const key=code+"||"+product;
+    if(!map.has(key)) map.set(key,{code,product,qty:0});
+    map.get(key).qty+=numberValue(r[q]);
+  });
+  return {rows:[...map.values()].sort((a,b)=>a.product.localeCompare(b.product,"es")),error:""};
+}
+function renderStock() {
+  $("printCompany").textContent=book.design.title||"FITIN CAMPO";
+  $("printTitle").textContent=book.design.stockHeading||"Stock actual";
+  $("printDate").textContent="Fecha de emisión: "+localDate();
+  const res=getStockRows();
+  if(res.error) {
+    $("stockTable").innerHTML=`<p style="padding:12px">${esc(res.error)}</p>`;
+    $("stockStats").innerHTML="";
+    message("stockStatus",res.error,true);
+    return;
+  }
+  $("stockStats").innerHTML=
+    `<div class="stat"><span class="muted">Productos</span><strong>${res.rows.length}</strong></div>`+
+    `<div class="stat"><span class="muted">Unidades totales</span><strong>${res.rows.reduce((s,r)=>s+r.qty,0)}</strong></div>`;
+  $("stockTable").innerHTML="<table><thead><tr><th>Código</th><th>Producto</th><th>Cantidad total</th></tr></thead><tbody>"+
+    (res.rows.length?res.rows.map(r=>`<tr><td>${esc(r.code)}</td><td>${esc(r.product)}</td><td>${esc(r.qty)}</td></tr>`).join(""):"<tr><td colspan='3'>No hay productos.</td></tr>")+
+    "</tbody></table>";
+  message("stockStatus",res.rows.length+" productos consolidados.");
+}
+$("printStockBtn").onclick=()=>{
+  renderStock();
+  if(getStockRows().error) {alert("Seleccioná las tres columnas antes de imprimir.");return;}
+  window.print();
+};
+
+/* PANELES Y GRÁFICOS */
+function widgetDefaults() {
+  return {id:uid(),title:"Nuevo panel",type:"metric",tab:"dashboard",sheet:0,category:"",value:"",size:"6"};
+}
+function renderWidgetEditor() {
+  const el=$("widgetEditor");
+  if(!book.widgets.length) {el.innerHTML="<p class='muted'>Todavía no hay paneles. Presioná Agregar panel.</p>";return;}
+  el.innerHTML=book.widgets.map(w=>{
+    const tabs=[{id:"dashboard",label:book.tabLabels.dashboard},...book.customTabs];
+    const options=(key,cols,selected)=>'<option value="">— Seleccionar —</option>'+cols.map(c=>`<option value="${esc(c)}" ${selected===c?"selected":""}>${esc(c)}</option>`).join("");
+    return `<div class="editor-row" data-widget="${esc(w.id)}">
+      <div><label>Título</label><input data-k="title" value="${esc(w.title)}"></div>
+      <div><label>Tipo</label><select data-k="type">
+        <option value="metric" ${w.type==="metric"?"selected":""}>Indicador</option>
+        <option value="table" ${w.type==="table"?"selected":""}>Tabla</option>
+        <option value="bar" ${w.type==="bar"?"selected":""}>Barras</option>
+        <option value="pie" ${w.type==="pie"?"selected":""}>Torta</option>
+      </select></div>
+      <div><label>Pestaña</label><select data-k="tab">${tabs.map(t=>`<option value="${t.id}" ${w.tab===t.id?"selected":""}>${esc(t.label||t.id)}</option>`).join("")}</select></div>
+      <div><label>Hoja</label><select data-k="sheet">${book.sheets.map((s,i)=>`<option value="${i}" ${Number(w.sheet)===i?"selected":""}>${esc(s.name)}</option>`).join("")}</select></div>
+      <div><label>Agrupar por</label><select data-k="category">${options("category",columns(activeRows(w.sheet)),w.category)}</select></div>
+      <div><label>Columna numérica</label><select data-k="value">${options("value",columns(activeRows(w.sheet)),w.value)}</select></div>
+      <div><label>Ancho</label><select data-k="size">
+        <option value="4" ${w.size==="4"?"selected":""}>1/3</option>
+        <option value="6" ${w.size==="6"?"selected":""}>1/2</option>
+        <option value="12" ${w.size==="12"?"selected":""}>Completo</option>
+      </select></div>
+      <div style="display:flex;align-items:end"><button class="danger" data-remove="${esc(w.id)}">Eliminar</button></div>
+    </div>`;
+  }).join("");
+
+  el.querySelectorAll("[data-widget]").forEach(row=>{
+    const w=book.widgets.find(x=>x.id===row.dataset.widget);
+    row.querySelectorAll("[data-k]").forEach(input=>input.onchange=()=>{
+      w[input.dataset.k]=input.value;
+      if(input.dataset.k==="sheet") {w.sheet=Number(input.value);w.category="";w.value="";renderWidgetEditor();}
+    });
+  });
+  el.querySelectorAll("[data-remove]").forEach(b=>b.onclick=()=>{
+    if(confirm("¿Eliminar este panel?")) {
+      book.widgets=book.widgets.filter(w=>w.id!==b.dataset.remove);
+      renderWidgetEditor();renderWidgetsInto("dashboardWidgets","dashboard");
+    }
+  });
+}
+$("addWidgetBtn").onclick=()=>{book.widgets.push(widgetDefaults());renderWidgetEditor();};
+
+function renderWidgetsInto(containerId,tabId) {
+  const container=$(containerId);
+  container.innerHTML="";
+  book.widgets.filter(w=>w.tab===tabId).forEach(w=>{
+    const wrapper=document.createElement("div");
+    wrapper.className="widget "+(w.size==="12"?"span12":w.size==="4"?"span4":"");
+    const panel=document.createElement("div");panel.className="panel";
+    const h=document.createElement("h3");h.textContent=w.title||"Panel";panel.appendChild(h);
+    const rows=activeRows(w.sheet);
+    if(w.type==="metric") {
+      const value=w.value?rows.reduce((s,r)=>s+numberValue(r[w.value]),0):rows.length;
+      panel.insertAdjacentHTML("beforeend",`<div class="stat"><span class="muted">${esc(w.value||"Cantidad de registros")}</span><strong>${esc(value)}</strong></div>`);
+    } else if(w.type==="table") {
+      const cols=columns(rows);
+      panel.insertAdjacentHTML("beforeend",'<div class="table-wrap"><table><thead><tr>'+cols.map(c=>`<th>${esc(c)}</th>`).join("")+'</tr></thead><tbody>'+
+        rows.slice(0,100).map(r=>"<tr>"+cols.map(c=>`<td>${esc(r[c]??"")}</td>`).join("")+"</tr>").join("")+"</tbody></table></div>");
+    } else {
+      const canvas=document.createElement("canvas");panel.appendChild(canvas);
+      if(window.Chart) {
+        const grouped=new Map();
+        rows.forEach(r=>{
+          const label=String(r[w.category]??"(Sin dato)");
+          grouped.set(label,(grouped.get(label)||0)+(w.value?numberValue(r[w.value]):1));
+        });
+        const entries=[...grouped.entries()].sort((a,b)=>b[1]-a[1]).slice(0,25);
+        new Chart(canvas,{
+          type:w.type==="pie"?"pie":"bar",
+          data:{labels:entries.map(x=>x[0]),datasets:[{label:w.value||"Registros",data:entries.map(x=>x[1])}]},
+          options:{responsive:true,plugins:{legend:{display:w.type==="pie"}},scales:w.type==="pie"?{}:{y:{beginAtZero:true}}}
+        });
+      }
+    }
+    wrapper.appendChild(panel);container.appendChild(wrapper);
+  });
+}
+
+/* TÍTULOS Y PESTAÑAS PERSONALIZADAS */
+function renderTabTitleEditor() {
+  $("tabTitleEditor").innerHTML=allTabs().map(t=>`<div class="editor-row">
+    <div><label>Nombre visible</label><input data-tab-label="${esc(t.id)}" value="${esc(t.label)}"></div>
+    <div><label>Identificador</label><input disabled value="${esc(t.id)}"></div>
+  </div>`).join("");
+}
+$("saveTabTitlesBtn").onclick=async()=>{
+  $("tabTitleEditor").querySelectorAll("[data-tab-label]").forEach(i=>{
+    const id=i.dataset.tabLabel;
+    if(Object.hasOwn(book.tabLabels,id)) book.tabLabels[id]=i.value.trim()||DEFAULT_LABELS[id];
+    else {const t=book.customTabs.find(x=>x.id===id);if(t)t.label=i.value.trim()||"Pestaña";}
+  });
+  try {await saveBook();renderTabs();renderTabTitleEditor();renderWidgetEditor();message("designStatus","Títulos guardados.");}
+  catch(e){message("designStatus",e.message,true);}
+};
+$("addTabBtn").onclick=async()=>{
+  const label=prompt("Nombre de la nueva pestaña:");
+  if(!label?.trim()) return;
+  const id=uid();book.customTabs.push({id,label:label.trim()});
+  try {await saveBook();renderTabs();renderTabTitleEditor();renderWidgetEditor();showTab(id);}
+  catch(e){message("designStatus",e.message,true);}
+};
+$("renameCurrentTabBtn").onclick=async()=>{
+  const t=book.customTabs.find(x=>x.id===activeTab);if(!t)return;
+  const n=prompt("Nuevo nombre:",t.label);if(!n?.trim())return;
+  t.label=n.trim();
+  try {await saveBook();renderTabs();renderTabTitleEditor();renderWidgetEditor();$("customHeading").textContent=t.label;}
+  catch(e){message("designStatus",e.message,true);}
+};
+$("deleteCurrentTabBtn").onclick=async()=>{
+  if(!book.customTabs.some(t=>t.id===activeTab))return;
+  if(!confirm("¿Eliminar la pestaña y sus paneles?"))return;
+  book.customTabs=book.customTabs.filter(t=>t.id!==activeTab);
+  book.widgets=book.widgets.filter(w=>w.tab!==activeTab);
+  try {await saveBook();renderTabs();renderTabTitleEditor();renderWidgetEditor();showTab("dashboard");}
+  catch(e){message("designStatus",e.message,true);}
+};
+
+/* DISEÑO */
+$("colorControls").innerHTML=COLORS.map(([k,label])=>`<div><label>${label}</label><div class="color-field">
+  <input type="color" id="color_${k}"><input id="hex_${k}" maxlength="7">
+</div></div>`).join("");
+
+COLORS.forEach(([k])=>{
+  $("color_"+k).oninput=()=>{$("hex_"+k).value=$("color_"+k).value;previewDesign();};
+  $("hex_"+k).onchange=()=>{
+    if(/^#[0-9a-f]{6}$/i.test($("hex_"+k).value)) {
+      $("color_"+k).value=$("hex_"+k).value;previewDesign();
+    }
+  };
+});
+
+function populateDesign() {
+  const d={...DEFAULT_DESIGN,...book.design};
+  const map={
+    dTitle:"title",dSubtitle:"subtitle",dLoginTitle:"loginTitle",
+    dLoginSubtitle:"loginSubtitle",dDashboardHeading:"dashboardHeading",
+    dRecordsHeading:"recordsHeading",dStockHeading:"stockHeading",
+    dFont:"font",dFontSize:"fontSize",dTitleSize:"titleSize",
+    dWidth:"width",dRadius:"radius"
+  };
+  Object.entries(map).forEach(([id,k])=>$(id).value=d[k]);
+  COLORS.forEach(([k])=>{$("color_"+k).value=d[k];$("hex_"+k).value=d[k];});
+}
+function readDesign() {
+  const d={...DEFAULT_DESIGN};
+  const map={
+    dTitle:"title",dSubtitle:"subtitle",dLoginTitle:"loginTitle",
+    dLoginSubtitle:"loginSubtitle",dDashboardHeading:"dashboardHeading",
+    dRecordsHeading:"recordsHeading",dStockHeading:"stockHeading",
+    dFont:"font",dFontSize:"fontSize",dTitleSize:"titleSize",
+    dWidth:"width",dRadius:"radius"
+  };
+  Object.entries(map).forEach(([id,k])=>{
+    d[k]=["font","title","subtitle","loginTitle","loginSubtitle","dashboardHeading","recordsHeading","stockHeading"].includes(k)?$(id).value:Number($(id).value);
+  });
+  COLORS.forEach(([k])=>{
+    const v=$("hex_"+k).value;
+    d[k]=/^#[0-9a-f]{6}$/i.test(v)?v:DEFAULT_DESIGN[k];
+  });
+  d.fontSize=Math.min(24,Math.max(11,d.fontSize||14));
+  d.titleSize=Math.min(48,Math.max(18,d.titleSize||28));
+  d.width=Math.min(2200,Math.max(700,d.width||1600));
+  d.radius=Math.min(40,Math.max(0,d.radius||0));
+  d.logos=book.design.logos||[];
+  return d;
+}
+function applyDesign() {
+  const d={...DEFAULT_DESIGN,...book.design},r=document.documentElement;
+  [["primary",d.primary],["header",d.header],["bg",d.bg],["card",d.card],
+   ["text",d.text],["muted",d.muted],["border",d.border],["font",d.font],
+   ["font-size",d.fontSize+"px"],["content-width",d.width+"px"],["radius",d.radius+"px"]
+  ].forEach(([k,v])=>r.style.setProperty("--"+k,v));
+
+  $("pageTitle").textContent=d.title;
+  $("pageSubtitle").textContent=d.subtitle;
+  $("loginTitle").textContent=d.loginTitle;
+  $("loginSubtitle").textContent=d.loginSubtitle;
+  $("dashboardHeading").textContent=d.dashboardHeading;
+  $("recordsHeading").textContent=d.recordsHeading;
+  $("stockHeading").textContent=d.stockHeading;
+  $("pageTitle").style.fontSize=d.titleSize+"px";
+  $("footer").textContent=d.title+" · Gestión de stock";
+  renderTabs();renderLogos();
+}
+function previewDesign() {book.design={...book.design,...readDesign()};applyDesign();}
+$("previewDesignBtn").onclick=()=>{previewDesign();message("designStatus","Vista previa aplicada. Guardá para conservarla.");};
+$("saveDesignBtn").onclick=async()=>{
+  try {book.design={...book.design,...readDesign()};applyDesign();await saveBook();message("designStatus","Diseño guardado.");}
+  catch(e){message("designStatus",e.message,true);}
+};
+$("resetDesignBtn").onclick=()=>{
+  if(!confirm("¿Restablecer colores y tipografía?"))return;
+  book.design={...DEFAULT_DESIGN,logos:book.design.logos||[]};
+  populateDesign();applyDesign();
+  message("designStatus","Valores predeterminados aplicados. Guardá para conservarlos.");
+};
+["dTitle","dSubtitle","dLoginTitle","dLoginSubtitle","dDashboardHeading","dRecordsHeading","dStockHeading","dFont","dFontSize","dTitleSize","dWidth","dRadius"].forEach(id=>$(id).addEventListener("input",previewDesign));
+
+/* LOGOS E IMÁGENES */
+
+function renderLogos() {
+  document.querySelectorAll(".logo-object").forEach(el => el.remove());
+
+  (book.design.logos || []).forEach(l => {
+    const img = document.createElement("img");
+    img.className = "logo-object";
+    img.alt = l.name || "Logo";
+    img.src = l.data;
+    img.style.width = (Number(l.width) || 150) + "px";
+    img.style.left = (Number(l.x) || 0) + "vw";
+    img.style.top = (Number(l.y) || 0) + "vh";
+    img.style.position = "fixed";
+    img.style.cursor = "default";
+    img.style.touchAction = "auto";
+    img.draggable = false;
+
+    if (l.visible === false) img.classList.add("hidden");
+
+    document.body.appendChild(img);
+  });
+}
+
+
+function renderLogoEditor() {
+  $("logoList").innerHTML=(book.design.logos||[]).map(l=>`<div class="editor-row">
+    <div><label>Nombre</label><input data-logo-name="${l.id}" value="${esc(l.name||"Logo")}"></div>
+    <div><label>Ancho</label><input type="number" data-logo-width="${l.id}" value="${Number(l.width)||150}"></div>
+    <div><label>Horizontal (%)</label><input type="number" data-logo-x="${l.id}" value="${Number(l.x)||0}"></div>
+    <div><label>Vertical (%)</label><input type="number" data-logo-y="${l.id}" value="${Number(l.y)||0}"></div>
+    <div><button class="danger" data-logo-delete="${l.id}">Eliminar</button></div>
+  </div>`).join("");
+
+  $("logoList").querySelectorAll("[data-logo-name]").forEach(i=>i.onchange=()=>{
+    const l=book.design.logos.find(x=>x.id===i.dataset.logoName);if(l)l.name=i.value;
+  });
+  ["width","x","y"].forEach(k=>{
+    $("logoList").querySelectorAll("[data-logo-"+k+"]").forEach(i=>i.onchange=()=>{
+      const l=book.design.logos.find(x=>x.id===i.dataset["logo"+k[0].toUpperCase()+k.slice(1)]);
+      if(!l)return;
+      const max=k==="width"?700:95,min=k==="width"?20:0;
+      l[k]=Math.max(min,Math.min(max,Number(i.value)||0));
+      renderLogos();
+    });
+  });
+  $("logoList").querySelectorAll("[data-logo-delete]").forEach(b=>b.onclick=()=>{
+    if(confirm("¿Eliminar esta imagen?")) {
+      book.design.logos=book.design.logos.filter(l=>l.id!==b.dataset.logoDelete);
+      renderLogoEditor();
+      renderLogos();
+    }
+  });
+}
+$("addLogoBtn").onclick=()=>{
+  const file=$("logoFile").files[0];
+  if(!file){alert("Primero seleccioná una imagen.");return;}
+  if(file.size>500*1024){alert("La imagen supera 500 KB.");return;}
+  const reader=new FileReader();
+  reader.onload=()=>{
+    book.design.logos=book.design.logos||[];
+    book.design.logos.push({
+      id:uid(),name:$("logoName").value.trim()||file.name,
+      width:Math.max(20,Math.min(700,Number($("logoWidth").value)||150)),
+      x:Math.max(0,Math.min(95,Number($("logoX").value)||0)),
+      y:Math.max(0,Math.min(95,Number($("logoY").value)||0)),
+      data:reader.result,visible:true
+    });
+    renderLogos();
+    renderLogoEditor();
+    $("logoFile").value="";
+  };
+  reader.readAsDataURL(file);
+};
+$("showLogosBtn").onclick=()=>{(book.design.logos||[]).forEach(l=>l.visible=true);renderLogos();};
+$("hideLogosBtn").onclick=()=>{(book.design.logos||[]).forEach(l=>l.visible=false);renderLogos();};
+$("saveLogosBtn").onclick=async()=>{
+  try {await saveBook();message("designStatus","Imágenes guardadas.");}
+  catch(e){message("designStatus",e.message,true);}
+};
+</script>
+</body>
+</html>
