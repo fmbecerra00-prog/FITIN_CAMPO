@@ -264,49 +264,101 @@ function localDate(){return new Intl.DateTimeFormat("es-AR",{day:"2-digit",month
 function numberValue(v){if(typeof v==="number")return Number.isFinite(v)?v:0;let s=String(v??"").trim().replace(/\s/g,"");if(!s)return 0;if(s.includes(",")&&s.includes(".")){s=s.lastIndexOf(",")>s.lastIndexOf(".")?s.replace(/\./g,"").replace(",","."):s.replace(/,/g,"");}else if(s.includes(","))s=s.replace(",",".");const n=Number(s);return Number.isFinite(n)?n:0;}
 function activeRows(i){return book.sheets[Number(i)]?.rows||[];}
 
-/* INICIO DE SESIÓN */
-$("loginForm").addEventListener("submit",async e=>{
- e.preventDefault();message("loginStatus","Ingresando...");
- const {data,error}=await sb.auth.signInWithPassword({email:$("email").value.trim(),password:$("password").value});
- if(error){message("loginStatus","No se pudo ingresar: "+error.message,true);return;}
- currentUser=data.user;await startApp();
-});
-$("logoutBtn").onclick=async()=>{await sb.auth.signOut();currentUser=null;$("app").style.display="none";$("login").style.display="block";};
-sb.auth.onAuthStateChange((event,session)=>{if(session?.user&&!currentUser){currentUser=session.user;setTimeout(startApp,0);}});
 
-async function loadBook(){
- const {data,error}=await sb.from("app_state").select("data").eq("id",1).maybeSingle();
- if(error)throw new Error("Error leyendo Supabase: "+error.message);
- const s=data?.data;
- if(s&&typeof s==="object"){
-  book={
-   sheets:Array.isArray(s.sheets)&&s.sheets.length?s.sheets:[{name:"Registros",rows:[]}],
-   active:Number.isInteger(s.active)?s.active:0,
-   design:{...DEFAULT_DESIGN,...(s.design||{}),logos:Array.isArray(s.design?.logos)?s.design.logos:[]},
-   tabLabels:{...DEFAULT_LABELS,...(s.tabLabels||{})},
-   customTabs:Array.isArray(s.customTabs)?s.customTabs:[],
-   widgets:Array.isArray(s.widgets)?s.widgets:[],
-   stockConfig:{sheet:0,product:"",code:"",qty:"",...(s.stockConfig||{})},
-   productConfig:{sheet:0,name:"",code:"",stock:"",client:"",consign:"",...(s.productConfig||{})},
-   countConfig:{sheet:0,column:"",type:"rows",sumColumn:"",...(s.countConfig||{})}
-  };
- }else{
-  book={sheets:[{name:"Registros",rows:[]}],active:0,design:{...DEFAULT_DESIGN,logos:[]},tabLabels:{...DEFAULT_LABELS},customTabs:[],widgets:[],stockConfig:{sheet:0,product:"",code:"",qty:""},productConfig:{sheet:0,name:"",code:"",stock:"",client:"",consign:""},countConfig:{sheet:0,column:"",type:"rows",sumColumn:""}};
- }
- if(book.active<0||book.active>=book.sheets.length)book.active=0;
- book.sheets.forEach(s=>{if(!Array.isArray(s.rows))s.rows=[];if(!s.name)s.name="Registros";});
-}
-async function saveBook(){
- if(!currentUser)throw new Error("Iniciá sesión primero.");
- const {error}=await sb.from("app_state").upsert({id:1,data:book,updated_by:currentUser.id,updated_at:new Date().toISOString()},{onConflict:"id"});
- if(error)throw new Error("Error al guardar: "+error.message);
-}
-async function startApp(){
- if(busy)return;busy=true;$("login").style.display="none";$("app").style.display="block";$("userEmail").textContent=currentUser?.email||"";
- try{await loadBook();populateDesign();renderAll();applyDesign();renderTabs();renderLogos();showTab("dashboard");}
- catch(e){alert(e.message);}
- finally{busy=false;}
-}
+/* INICIO DE SESIÓN CORREGIDO */
+const loginForm = document.getElementById("loginForm");
+const loginButton = loginForm.querySelector('button[type="submit"], button:not([type])');
+
+loginForm.addEventListener("submit", async function (e) {
+  e.preventDefault();
+
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+  const status = document.getElementById("loginStatus");
+
+  if (!email || !password) {
+    status.textContent = "Ingresá tu correo y contraseña.";
+    status.className = "status error";
+    return;
+  }
+
+  if (loginButton) {
+    loginButton.disabled = true;
+    loginButton.textContent = "Ingresando...";
+  }
+
+  status.textContent = "Conectando con el servidor...";
+  status.className = "status";
+
+  try {
+    const { data, error } = await sb.auth.signInWithPassword({
+      email: email,
+      password: password
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data || !data.user) {
+      throw new Error("No se recibió una sesión válida.");
+    }
+
+    currentUser = data.user;
+
+    status.textContent = "Acceso correcto. Cargando registros...";
+    status.className = "status success";
+
+    await startApp();
+
+  } catch (error) {
+    console.error("Error de inicio de sesión:", error);
+
+    status.textContent =
+      "No se pudo ingresar: " +
+      (error.message || "Error de conexión. Intentá nuevamente.");
+
+    status.className = "status error";
+
+  } finally {
+    if (loginButton) {
+      loginButton.disabled = false;
+      loginButton.textContent = "Iniciar sesión";
+    }
+  }
+});
+
+document.getElementById("logoutBtn").onclick = async function () {
+  try {
+    const { error } = await sb.auth.signOut();
+
+    if (error) {
+      throw error;
+    }
+
+    currentUser = null;
+    document.getElementById("app").style.display = "none";
+    document.getElementById("login").style.display = "block";
+    document.getElementById("password").value = "";
+
+  } catch (error) {
+    alert("No se pudo cerrar la sesión: " + error.message);
+  }
+};
+
+sb.auth.onAuthStateChange(function (event, session) {
+  if (session && session.user && !currentUser) {
+    currentUser = session.user;
+    setTimeout(function () {
+      startApp();
+    }, 0);
+  }
+
+  if (event === "SIGNED_OUT") {
+    currentUser = null;
+  }
+});
+
 
 /* PESTAÑAS */
 function allTabs(){return [{id:"dashboard",label:book.tabLabels.dashboard||"Inicio"},{id:"records",label:book.tabLabels.records||"Registros"},{id:"stock",label:book.tabLabels.stock||"Stock actual"},...book.customTabs,{id:"design",label:book.tabLabels.design||"Diseño de página"}];}
@@ -621,3 +673,4 @@ $("saveLogosBtn").onclick=async()=>{try{await saveBook();message("designStatus",
 </script>
 </body>
 </html>
+
