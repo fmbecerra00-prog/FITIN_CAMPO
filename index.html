@@ -405,7 +405,10 @@ $("loginForm").addEventListener("submit", async e => {
     await startApp();
   } catch(err) {
     console.error("Error de inicio de sesión:",err);
-    message("loginStatus",err.message||"No se pudo iniciar sesión.",true);
+    const msg = err.message === "Invalid login credentials"
+      ? "Correo o contraseña incorrectos. Verificá que el usuario exista y esté habilitado en Supabase."
+      : (err.message || "No se pudo iniciar sesión.");
+    message("loginStatus",msg,true);
   } finally {
     $("loginBtn").disabled=false;
     $("loginBtn").textContent="Iniciar sesión";
@@ -567,7 +570,7 @@ function showTab(id) {
     setupCountControls();setupProductControls();renderDashboard();renderWidgetsInto("dashboardWidgets","dashboard");
   }
   if(id==="stock") {setupStockControls();renderStock();}
-  if(id==="design") {renderTabTitleEditor();renderWidgetEditor();renderLogos();}
+  if(id==="design") {renderTabTitleEditor();renderWidgetEditor();renderLogoEditor();renderLogos();}
 }
 
 /* REGISTROS */
@@ -1079,6 +1082,7 @@ function renderLogos() {
 }
 
 
+function renderLogoEditor() {
   $("logoList").innerHTML=(book.design.logos||[]).map(l=>`<div class="editor-row">
     <div><label>Nombre</label><input data-logo-name="${l.id}" value="${esc(l.name||"Logo")}"></div>
     <div><label>Ancho</label><input type="number" data-logo-width="${l.id}" value="${Number(l.width)||150}"></div>
@@ -1101,7 +1105,9 @@ function renderLogos() {
   });
   $("logoList").querySelectorAll("[data-logo-delete]").forEach(b=>b.onclick=()=>{
     if(confirm("¿Eliminar esta imagen?")) {
-      book.design.logos=book.design.logos.filter(l=>l.id!==b.dataset.logoDelete);renderLogos();
+      book.design.logos=book.design.logos.filter(l=>l.id!==b.dataset.logoDelete);
+      renderLogoEditor();
+      renderLogos();
     }
   });
 }
@@ -1119,7 +1125,9 @@ $("addLogoBtn").onclick=()=>{
       y:Math.max(0,Math.min(95,Number($("logoY").value)||0)),
       data:reader.result,visible:true
     });
-    renderLogos();$("logoFile").value="";
+    renderLogos();
+    renderLogoEditor();
+    $("logoFile").value="";
   };
   reader.readAsDataURL(file);
 };
