@@ -1,336 +1,988 @@
-<!doctype html>
+
+<!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Stock Fitin / Turboflit</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stock Fitin | Turboflit</title>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
 <style>
-:root{--navy:#172b4d;--blue:#2457a7;--bg:#f4f6fa;--line:#dce2eb;--text:#1d2939;--green:#13795b;--orange:#a75b12;--card:#fff}
-*{box-sizing:border-box}body{margin:0;font:15px/1.45 system-ui,Segoe UI,Arial;background:var(--bg);color:var(--text)}
-header{background:var(--navy);color:white;padding:20px clamp(16px,4vw,40px);display:flex;justify-content:space-between;align-items:center;gap:15px;flex-wrap:wrap}
-h1{font-size:23px;margin:0}header p{margin:4px 0;color:#dce7fa}.wrap{max-width:1600px;margin:auto;padding:20px}
-.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px}
-.actions,.tabs{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-button,.filelabel{border:0;border-radius:9px;padding:10px 14px;background:var(--blue);color:white;font-weight:600;cursor:pointer;font-size:14px}
-button.secondary,.filelabel.secondary{background:#e9eef7;color:#1b3765}button.danger{background:#a83232}button:disabled{opacity:.45;cursor:not-allowed}
-input,select,textarea{padding:10px;border:1px solid #cbd5e1;border-radius:8px;font:inherit;max-width:100%;color:var(--text);background:white}
-textarea{width:100%;min-height:80px}#search{flex:1;min-width:200px}
-.hint{color:#5d6b82;font-size:13px}.status{padding:10px;border-radius:8px;background:#eef5ff;margin-top:10px;white-space:pre-wrap}
-.tablewrap{overflow:auto;max-height:60vh;border:1px solid var(--line);border-radius:10px}
-table{border-collapse:collapse;width:100%;background:white;font-size:13px}th,td{padding:9px 10px;border-bottom:1px solid #e7ebf1;text-align:left;white-space:nowrap;max-width:320px}
-th{position:sticky;top:0;background:#edf2f9;z-index:1}td{overflow:hidden;text-overflow:ellipsis}
-.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.field label{display:block;font-size:12px;color:#536179;margin-bottom:4px}.field input{width:100%}
-dialog{border:0;border-radius:14px;max-width:760px;width:calc(100% - 24px);box-shadow:0 20px 60px #0003}dialog::backdrop{background:#172b4d77}
-.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.stat{background:#f5f8fc;border:1px solid var(--line);border-radius:10px;padding:14px}.stat b{display:block;font-size:23px;margin-bottom:2px}
-.login{max-width:480px;margin:7vh auto}.login input{width:100%;margin:5px 0 12px}.hidden{display:none!important}
-.page{display:none}.page.active{display:block}.dashgrid{display:grid;grid-template-columns:1.2fr 1fr;gap:16px}.panel h3{margin-top:0}
-.badge{display:inline-block;padding:4px 8px;border-radius:20px;background:#e4f5ec;color:var(--green);font-size:12px}.badge.warn{background:#fff0df;color:var(--orange)}
-.empty{padding:24px;text-align:center;color:#718096}.smallnote{font-size:12px;color:#718096;margin-top:8px}
-.editor-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}.editor-grid label{display:block;font-size:13px;font-weight:600;margin-bottom:5px}.editor-grid input,.editor-grid select{width:100%}
-.checkline{display:flex;align-items:center;gap:8px;margin:8px 0}.checkline input{width:auto}
-@media(max-width:850px){.dashgrid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:600px){.wrap{padding:12px}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+:root {
+  --primary: #3157d5;
+  --header: #18243a;
+  --bg: #f3f5fa;
+  --card: #ffffff;
+  --text: #202b3c;
+  --muted: #6b7280;
+  --border: #dfe4ed;
+  --radius: 14px;
+  --font: Arial, sans-serif;
+  --font-size: 14px;
+  --content-width: 1500px;
+  --shadow: 0 4px 18px rgba(20,35,65,.07);
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--font-size);
+}
+button, input, select, textarea { font: inherit; }
+button {
+  border: 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  background: var(--primary);
+  color: white;
+}
+button:hover { filter: brightness(.94); }
+button.secondary {
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+button.danger { background: #c53c4a; }
+input, select, textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text);
+}
+label { display: block; font-weight: 600; margin-bottom: 6px; }
+small, .muted { color: var(--muted); }
+#login {
+  max-width: 420px;
+  margin: 9vh auto;
+  padding: 30px;
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+#login h1 { margin-top: 0; }
+.field { margin: 14px 0; }
+#app { display: none; }
+.topbar {
+  background: var(--header);
+  color: white;
+  padding: 20px;
+}
+.topbar-inner {
+  max-width: var(--content-width);
+  margin: auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.topbar h1 { margin: 0; font-size: 26px; }
+.topbar p { margin: 6px 0 0; opacity: .8; }
+.topbar button.secondary { color: var(--text); }
+.container {
+  max-width: var(--content-width);
+  padding: 22px;
+  margin: auto;
+}
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.tabs button { background: #e4e9f5; color: #26334b; }
+.tabs button.active { background: var(--primary); color: white; }
+.panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 20px;
+  margin-bottom: 20px;
+  min-width: 0;
+}
+.panel h2, .panel h3 { margin-top: 0; }
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 16px;
+}
+.stat {
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+.stat strong { display: block; font-size: 26px; margin-top: 10px; }
+.toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 12px 0;
+}
+.toolbar input { flex: 1; min-width: 180px; }
+.table-wrap {
+  overflow: auto;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  background: var(--card);
+  white-space: nowrap;
+}
+th, td {
+  text-align: left;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--border);
+}
+th { background: var(--header); color: white; }
+tr:last-child td { border-bottom: 0; }
+td[contenteditable="true"]:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.actions { display: flex; gap: 6px; }
+.actions button { padding: 6px 9px; }
+.design-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 15px;
+}
+.color-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.color-field input[type="color"] {
+  width: 52px;
+  height: 40px;
+  padding: 3px;
+}
+.check-field { display: flex; gap: 10px; align-items: center; }
+.check-field input { width: auto; }
+.status { margin: 10px 0; min-height: 20px; }
+.status.error { color: #c53c4a; }
+.status.success { color: #17804a; }
+.hidden { display: none !important; }
+.footer { text-align: center; padding: 24px; color: var(--muted); }
+@media(max-width:600px) {
+  .container { padding: 12px; }
+  .panel { padding: 14px; }
+  .topbar h1 { font-size: 22px; }
+}
 </style>
 </head>
+
 <body>
-<header id="appHeader">
-  <div><h1 id="brandTitle">Stock Fitin / Turboflit</h1><p id="brandSubtitle">Gestión online de stock, ubicaciones y consignaciones</p></div>
-  <div class="actions"><span id="userLabel" class="hint" style="color:white"></span><button id="logout" class="secondary hidden">Cerrar sesión</button></div>
-</header>
-<main class="wrap">
-<section id="setup" class="panel hidden">
-  <h2>Configurar conexión</h2><p>La URL y la clave pública están preconfiguradas. Podés modificarlas si fuera necesario.</p>
-  <label>Supabase Project URL<br><input id="sbUrl" style="width:100%"></label><br><br>
-  <label>Publishable / anon key<br><input id="sbKey" style="width:100%"></label><br><br>
-  <button id="saveConfig">Guardar configuración</button>
-  <p class="hint">La configuración queda en este navegador. La seguridad real depende de la autenticación y las políticas RLS de Supabase. Nunca uses una clave service_role en el navegador.</p>
-</section>
-<section id="login" class="panel login hidden">
-  <h2>Iniciar sesión</h2><p class="hint">Ingresá con un usuario creado/autorizado en Supabase Authentication.</p>
+
+<section id="login">
+  <h1 id="loginTitle">Stock Fitin</h1>
+  <p id="loginSubtitle" class="muted">Gestión de registros · Turboflit</p>
   <form id="loginForm">
-    <label>Correo electrónico<input id="email" type="email" required autocomplete="username"></label>
-    <label>Contraseña<input id="password" type="password" required autocomplete="current-password"></label>
-    <button type="submit">Entrar</button>
-  </form><p id="loginMsg" class="status" aria-live="polite"></p>
-</section>
-<section id="app" class="hidden">
-  <div class="panel">
-    <div class="stats">
-      <div class="stat"><b id="sheetCount">0</b>Hojas importadas</div>
-      <div class="stat"><b id="rowCount">0</b>Registros visibles</div>
-      <div class="stat"><b id="productCount">0</b>Productos detectados</div>
-      <div class="stat"><b id="syncState">—</b>Sincronización</div>
+    <div class="field">
+      <label for="email">Correo electrónico</label>
+      <input id="email" type="email" autocomplete="username" required>
     </div>
-    <p class="hint">Los cambios se guardan en Supabase. Importar un libro reemplaza todos los datos actuales compartidos: exportá una copia de seguridad antes.</p>
-    <div class="actions">
-      <label class="filelabel" for="file">Importar Excel</label><input id="file" type="file" accept=".xlsx,.xls,.csv" hidden>
-      <button id="export" class="secondary">Exportar Excel</button><button id="add">+ Agregar registro</button>
-      <button id="reload" class="secondary">Recargar online</button><button id="openDesign" class="secondary">Editar diseño</button>
+    <div class="field">
+      <label for="password">Contraseña</label>
+      <input id="password" type="password" autocomplete="current-password" required>
     </div>
-    <div id="status" class="status" aria-live="polite"></div>
-  </div>
-  <div class="tabs" id="tabsMain" style="margin-bottom:12px">
-    <button class="mainTab" data-page="dashboard">Tablero principal</button>
-    <button class="mainTab secondary" data-page="data">Tablas de datos</button>
-    <button class="mainTab secondary" data-page="pageEditor">Página / perfil</button>
-  </div>
-  <section id="dashboard" class="page active">
-    <div class="panel" id="dashIntro"><h2 id="dashTitle">Tablero principal</h2><p class="hint" id="dashDescription">Resumen de existencias, ubicaciones y mercadería consignada.</p>
-      <div class="stats" id="dashStats">
-        <div class="stat" data-widget="products"><b id="dashProducts">0</b>Productos distintos</div>
-        <div class="stat" data-widget="units"><b id="dashUnits">0</b>Unidades registradas</div>
-        <div class="stat" data-widget="locations"><b id="dashLocations">0</b>Ubicaciones detectadas</div>
-        <div class="stat" data-widget="consignments"><b id="dashConsignments">0</b>Unidades en consignación</div>
-      </div><p id="dashMessage" class="smallnote"></p>
-    </div>
-    <div class="dashgrid">
-      <div class="panel" data-widget="productTable"><h3>Stock total por producto</h3><p class="hint">Suma las cantidades detectadas para un mismo producto en todas las ubicaciones.</p><div class="tablewrap"><table><thead><tr><th>Producto</th><th>Stock total</th><th>Ubicaciones</th></tr></thead><tbody id="dashProductRows"></tbody></table></div></div>
-      <div class="panel" data-widget="locationTable"><h3>Stock por ubicación</h3><p class="hint">Detalle de las cantidades por depósito, local o ubicación.</p><div class="tablewrap"><table><thead><tr><th>Ubicación</th><th>Producto</th><th>Cantidad</th></tr></thead><tbody id="dashLocationRows"></tbody></table></div></div>
-    </div>
-    <div class="panel" data-widget="consignmentTable"><h3>Productos en consignación</h3><p class="hint">La detección depende de los nombres de las hojas y de los encabezados del Excel.</p><div class="tablewrap"><table><thead><tr><th>Producto</th><th>Cliente / destinatario</th><th>Cantidad consignada</th><th>Fecha / estado</th></tr></thead><tbody id="dashConsRows"></tbody></table></div></div>
-  </section>
-  <section id="data" class="page">
-    <div class="panel"><div id="tabs" class="tabs"></div>
-      <div class="actions"><input id="search" placeholder="Buscar por código, nombre o cualquier dato…"><select id="filterCol"><option value="">Todas las columnas</option></select><input id="filterVal" placeholder="Valor del filtro"><button id="resetFilter" class="secondary">Limpiar</button></div>
-      <p class="hint">Elegí una fila para editarla. Cada cambio se sincroniza con la base online.</p>
-      <div class="tablewrap"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table></div>
-      <div class="actions" style="margin-top:12px"><button id="prev" class="secondary">Anterior</button><span id="pageInfo" class="hint"></span><button id="next" class="secondary">Siguiente</button></div>
-    </div>
-  </section>
-  <section id="pageEditor" class="page">
-    <div class="panel"><h2>Personalizar página y perfil</h2><p class="hint">Estos cambios personalizan la interfaz de la aplicación; no modifican los permisos de Supabase ni los datos de autenticación.</p>
-      <div class="editor-grid">
-        <div><label for="pageBrand">Título de la aplicación</label><input id="pageBrand"></div>
-        <div><label for="pageSubtitle">Subtítulo</label><input id="pageSubtitle"></div>
-        <div><label for="pageDashTitle">Título del tablero</label><input id="pageDashTitle"></div>
-        <div><label for="pageDashDesc">Descripción del tablero</label><input id="pageDashDesc"></div>
-        <div><label for="pageNavy">Color de encabezado</label><input id="pageNavy" type="color"></div>
-        <div><label for="pageBlue">Color de botones</label><input id="pageBlue" type="color"></div>
-        <div><label for="pageBg">Fondo de página</label><input id="pageBg" type="color"></div>
-        <div><label for="pageCard">Fondo de paneles</label><input id="pageCard" type="color"></div>
-      </div>
-      <div class="actions" style="margin-top:14px"><button id="savePageDesign">Guardar diseño</button><button id="resetPageDesign" class="secondary">Restaurar diseño inicial</button></div>
-    </div>
-    <div class="panel"><h3>Sesión actual</h3><p id="profileEmail"></p><p class="hint">La cuenta visible es la que inició sesión. Para crear, desactivar o autorizar usuarios, usá Supabase Dashboard → Authentication → Users y las políticas de acceso de la base de datos.</p></div>
-  </section>
-</section>
-<p class="hint">No compartas tu contraseña ni la clave service_role. Usá HTTPS y cuentas autorizadas.</p>
-</main>
-
-<dialog id="editor"><form id="editForm"><h2 id="editorTitle">Registro</h2><div id="fields" class="fields"></div><div class="actions" style="margin-top:18px"><button type="submit">Guardar</button><button type="button" id="cancel" class="secondary">Cancelar</button><button type="button" id="deleteRow" class="danger" style="margin-left:auto">Eliminar</button></div></form></dialog>
-<dialog id="designDialog">
-  <form id="designForm"><h2>Editor visual del tablero</h2><p class="hint">Elegí qué paneles querés mostrar y el orden de los bloques principales. Los cambios se guardan junto con la configuración de la aplicación.</p>
-    <div class="editor-grid">
-      <div><label for="designDashTitle">Título del tablero</label><input id="designDashTitle"></div>
-      <div><label for="designDashDesc">Descripción</label><input id="designDashDesc"></div>
-    </div>
-    <h3>Paneles visibles</h3>
-    <label class="checkline"><input type="checkbox" id="wProducts"> Indicador: productos distintos</label>
-    <label class="checkline"><input type="checkbox" id="wUnits"> Indicador: unidades registradas</label>
-    <label class="checkline"><input type="checkbox" id="wLocations"> Indicador: ubicaciones</label>
-    <label class="checkline"><input type="checkbox" id="wConsignments"> Indicador: unidades en consignación</label>
-    <label class="checkline"><input type="checkbox" id="wProductTable"> Tabla: stock total por producto</label>
-    <label class="checkline"><input type="checkbox" id="wLocationTable"> Tabla: stock por ubicación</label>
-    <label class="checkline"><input type="checkbox" id="wConsignmentTable"> Tabla: productos en consignación</label>
-    <div class="actions" style="margin-top:18px"><button type="submit">Aplicar y guardar</button><button type="button" id="cancelDesign" class="secondary">Cancelar</button></div>
+    <button type="submit" style="width:100%">Iniciar sesión</button>
   </form>
-</dialog>
-<script>
-'use strict';
-const DEFAULT_URL='https://jgyeckanfjrqdfvinoaj.supabase.co';
-const DEFAULT_KEY='sb_publishable_lLv-CsOrjj-weMWJgM2QHw_LNaiA4SW';
-const CONFIG_KEY='fitin_supabase_config';
-const DEFAULT_DESIGN={
-  brandTitle:'Stock Fitin / Turboflit',
-  brandSubtitle:'Gestión online de stock, ubicaciones y consignaciones',
-  dashTitle:'Tablero principal',
-  dashDescription:'Resumen de existencias, ubicaciones y mercadería consignada.',
-  navy:'#172b4d',blue:'#2457a7',bg:'#f4f6fa',card:'#ffffff',
-  widgets:{products:true,units:true,locations:true,consignments:true,productTable:true,locationTable:true,consignmentTable:true}
-};
-let sb=null,user=null,book={sheets:[],active:0,design:null},page=0,editIndex=null;
-const pageSize=100,$=id=>document.getElementById(id);
-function msg(t){$('status').textContent=t}
-function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function active(){return book.sheets[book.active]}
-function cfg(){try{return JSON.parse(localStorage.getItem(CONFIG_KEY)||'{}')}catch{return {}}}
-function show(which){['setup','login','app'].forEach(id=>$(id).classList.toggle('hidden',id!==which))}
-function currentDesign(){return {...DEFAULT_DESIGN,...(book.design||{}),widgets:{...DEFAULT_DESIGN.widgets,...((book.design||{}).widgets||{})}}}
-function init(){
-  const c=cfg(),url=c.url||DEFAULT_URL,key=c.key||DEFAULT_KEY;
-  $('sbUrl').value=url;$('sbKey').value=key;
-  connect(url,key);
-}
-async function connect(url,key){
-  try{
-    if(!window.supabase)throw new Error('No se pudo cargar la librería de Supabase. Revisá tu conexión a internet.');
-    sb=window.supabase.createClient(url,key);
-    const {data:{session},error}=await sb.auth.getSession();
-    if(error)throw error;
-    if(session){user=session.user;await afterLogin()}else show('login');
-    sb.auth.onAuthStateChange((_event,session)=>{if(session){user=session.user}else{user=null}});
-  }catch(e){show('setup');alert('No se pudo conectar con Supabase: '+e.message)}
-}
-$('saveConfig').onclick=()=>{const url=$('sbUrl').value.trim(),key=$('sbKey').value.trim();if(!url.startsWith('https://')||!key){alert('Ingresá la URL https y la clave pública de Supabase.');return}localStorage.setItem(CONFIG_KEY,JSON.stringify({url,key}));connect(url,key)};
-$('loginForm').onsubmit=async e=>{
-  e.preventDefault();$('loginMsg').textContent='Conectando…';
-  const {data,error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});
-  if(error){$('loginMsg').textContent='No se pudo iniciar sesión: '+error.message;return}
-  user=data.user;await afterLogin()
-};
-async function afterLogin(){
-  $('userLabel').textContent=user.email||'';$('profileEmail').textContent=user.email||'Usuario autenticado';
-  $('logout').classList.remove('hidden');show('app');await fetchBook();
-}
-$('logout').onclick=async()=>{await sb.auth.signOut();user=null;book={sheets:[],active:0,design:null};$('userLabel').textContent='';$('logout').classList.add('hidden');show('login')};
-async function fetchBook(){
-  setSync('Cargando…');
-  const {data,error}=await sb.from('app_state').select('data').eq('id',1).maybeSingle();
-  if(error){setSync('Error');msg('No se pudieron leer los datos. Revisá que exista la tabla app_state y que las políticas RLS permitan el acceso a tu usuario. Detalle: '+error.message);return}
-  const loaded=data?.data;
-  book=loaded&&Array.isArray(loaded.sheets)?loaded:{sheets:[],active:0,design:null};
-  if(!book.sheets)book={sheets:[],active:0,design:null};
-  book.active=Math.min(book.active||0,Math.max(0,book.sheets.length-1));
-  applyDesign();render();setSync('Sincronizado');
-  msg(book.sheets.length?'Datos cargados desde Supabase.':'Todavía no hay datos online. Importá el Excel para iniciar.');
-}
-function setSync(t){$('syncState').textContent=t}
-async function persist(){
-  if(!user)return false;
-  setSync('Guardando…');
-  const payload={id:1,data:book,updated_by:user.id,updated_at:new Date().toISOString()};
-  const {error}=await sb.from('app_state').upsert(payload,{onConflict:'id'});
-  if(error){setSync('Error');msg('No se pudo guardar online: '+error.message+' Revisá la tabla app_state y las políticas RLS.');return false}
-  setSync('Sincronizado');msg('Cambios guardados online.');return true;
-}
-async function importWorkbook(wb){
-  const next={sheets:wb.SheetNames.map(name=>{
-    const matrix=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,defval:'',raw:false});
-    const h=matrix.findIndex(r=>r.some(c=>String(c).trim()!==''));
-    if(h<0)return{name,headers:['Dato'],rows:[]};
-    const headers=matrix[h].map((x,i)=>String(x||`Columna ${i+1}`));
-    return{name,headers,rows:matrix.slice(h+1).filter(r=>r.some(c=>String(c??'').trim()!=='')).map(r=>headers.map((_,i)=>r[i]??''))};
-  }),active:0,design:book.design||null};
-  if(!confirm('La importación reemplazará todos los datos actuales online. ¿Ya exportaste una copia de seguridad y querés continuar?'))return;
-  book=next;render();if(await persist())msg('Excel importado y guardado online. Revisá las hojas y el tablero.');
-}
-$('file').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const wb=XLSX.read(await f.arrayBuffer(),{type:'array'});await importWorkbook(wb)}catch(err){msg('Error al leer Excel: '+err.message)}e.target.value=''};
-function norm(v){return String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()}
-function findCol(headers,patterns){return headers.findIndex(h=>patterns.some(p=>p.test(norm(h))))}
-function numberVal(v){
-  if(typeof v==='number')return v;
-  let s=String(v??'').trim().replace(/\s/g,'');if(!s)return 0;
-  if(/^-?\d{1,3}(\.\d{3})+,\d+$/.test(s))s=s.replace(/\./g,'').replace(',','.');
-  else if(/^-?\d+,\d+$/.test(s))s=s.replace(',','.');
-  else s=s.replace(/,/g,'');
-  const n=Number(s.replace(/[^\d.-]/g,''));return Number.isFinite(n)?n:0;
-}
-function getVal(row,i){return i<0?'':row[i]??''}
-function buildDashboard(){
-  const records=[],cons=[];
-  const productP=[/^(producto|nombre producto|articulo|descripcion|producto descripcion|item)$/, /codigo.*producto/];
-  const qtyP=[/^(stock|cantidad|existencia|existencias|unidades|cantidad stock|stock actual|saldo|cantidad actual|qty)$/, /cantidad.*(stock|disponible|existente)/,/stock.*(actual|total|fisico)/];
-  const locP=[/^(ubicacion|deposito|almacen|localizacion|sucursal|sector|estanteria|locacion)$/,/ubicacion|deposito|almacen|estanteria/];
-  const codeP=[/^(codigo|cod|sku|id producto|codigo articulo|referencia)$/,/codigo/];
-  const clientP=[/^(cliente|destinatario|consignatario|empresa|razon social)$/,/cliente|destinatario|consignatario/];
-  const dateP=[/fecha|vencimiento|devolucion|estado|situacion/],consSheetP=/consign|comodato|tercero|prestamo/;
-  for(const sh of book.sheets){
-    const hn=sh.headers.map(norm),pi=findCol(hn,productP),qi=findCol(hn,qtyP),li=findCol(hn,locP),ci=findCol(hn,codeP),cli=findCol(hn,clientP);
-    const stateI=hn.findIndex(h=>/consign|estado|situacion|tipo movimiento/.test(h)),isConsSheet=consSheetP.test(norm(sh.name));
-    sh.rows.forEach((row,idx)=>{
-      const name=String(getVal(row,pi)||getVal(row,ci)||'').trim(),code=String(getVal(row,ci)||'').trim(),qty=numberVal(getVal(row,qi));
-      const loc=String(getVal(row,li)||'Sin ubicación').trim()||'Sin ubicación',state=String(getVal(row,stateI)||'').trim();
-      const isCons=isConsSheet||/consignad|consignacion|en tercero|prestamo/.test(norm(state));
-      if(name&&qi>=0){
-        const rec={name,code,qty,loc,sheet:sh.name,row:idx};
-        if(isCons)cons.push({...rec,client:String(getVal(row,cli)||'No indicado'),detail:String(getVal(row,findCol(hn,dateP))||state||'Consignado')});
-        else records.push(rec);
-      }else if(isCons&&(name||qty))cons.push({name:name||code||'Producto sin identificar',code,qty,loc,sheet:sh.name,row:idx,client:String(getVal(row,cli)||'No indicado'),detail:state||'Consignado'});
-    });
-  }
-  const aggregate=new Map();
-  records.forEach(r=>{const key=norm(r.name||r.code);if(!aggregate.has(key))aggregate.set(key,{name:r.name,qty:0,locs:new Set()});const a=aggregate.get(key);a.qty+=r.qty;a.locs.add(r.loc)});
-  const productList=[...aggregate.values()].sort((a,b)=>a.name.localeCompare(b.name,'es'));
-  const locationList=records.slice().sort((a,b)=>a.loc.localeCompare(b.loc,'es')||a.name.localeCompare(b.name,'es'));
-  $('dashProducts').textContent=productList.length;$('dashUnits').textContent=fmt(records.reduce((a,r)=>a+r.qty,0));
-  $('dashLocations').textContent=new Set(records.map(r=>r.loc)).size;$('dashConsignments').textContent=fmt(cons.reduce((a,r)=>a+Math.max(0,r.qty),0));
-  $('productCount').textContent=productList.length;
-  $('dashProductRows').innerHTML=productList.length?productList.map(p=>`<tr><td>${esc(p.name)}</td><td>${fmt(p.qty)}</td><td>${esc([...p.locs].join(', '))}</td></tr>`).join(''):'<tr><td colspan="3" class="empty">No se detectaron datos de stock. Revisá los encabezados de producto, cantidad y ubicación.</td></tr>';
-  $('dashLocationRows').innerHTML=locationList.length?locationList.map(r=>`<tr><td>${esc(r.loc)}</td><td>${esc(r.name)}</td><td>${fmt(r.qty)}</td></tr>`).join(''):'<tr><td colspan="3" class="empty">No hay registros con cantidad y producto detectables.</td></tr>';
-  $('dashConsRows').innerHTML=cons.length?cons.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.client)}</td><td>${fmt(r.qty)}</td><td>${esc(r.detail)}</td></tr>`).join(''):'<tr><td colspan="4" class="empty">No se detectaron consignaciones. Si están en otra hoja o usan otros encabezados, habrá que ajustar la detección.</td></tr>';
-  const missing=book.sheets.filter(sh=>findCol(sh.headers,[...productP,...codeP])<0||findCol(sh.headers,qtyP)<0).map(sh=>sh.name);
-  $('dashMessage').textContent=book.sheets.length?`Hojas analizadas: ${book.sheets.length}. ${missing.length?'No se pudieron interpretar completamente estas hojas: '+missing.join(', ')+'.':''} Revisá que las columnas tengan encabezados claros.`:'Importá tu Excel para visualizar el tablero.';
-}
-function fmt(n){return Number(n||0).toLocaleString('es-AR',{maximumFractionDigits:2})}
-function render(){
-  const s=active();
-  $('tabs').innerHTML=book.sheets.map((x,i)=>`<button class="${i===book.active?'':'secondary'}" data-tab="${i}">${esc(x.name)} (${x.rows.length})</button>`).join('');
-  $('tabs').querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{book.active=+b.dataset.tab;page=0;render()});
-  $('sheetCount').textContent=book.sheets.length;
-  const fc=$('filterCol').value,search=$('search').value.toLowerCase(),fv=$('filterVal').value.toLowerCase();
-  $('filterCol').innerHTML='<option value="">Todas las columnas</option>'+(s?s.headers.map((h,i)=>`<option value="${i}">${esc(h)}</option>`).join(''):'');$('filterCol').value=fc;
-  const list=(s?s.rows:[]).map((r,i)=>({r,i})).filter(o=>o.r.join(' ').toLowerCase().includes(search)&&(fc===''||String(o.r[+fc]??'').toLowerCase().includes(fv)));
-  $('rowCount').textContent=list.length;const max=Math.max(0,Math.ceil(list.length/pageSize)-1);page=Math.min(page,max);
-  const shown=list.slice(page*pageSize,(page+1)*pageSize);
-  $('thead').innerHTML=s?'<tr>'+s.headers.map(h=>`<th>${esc(h)}</th>`).join('')+'<th>Acción</th></tr>':'';
-  $('tbody').innerHTML=shown.length?shown.map(o=>'<tr>'+s.headers.map((_,i)=>`<td title="${esc(o.r[i])}">${esc(o.r[i])}</td>`).join('')+`<td><button class="secondary" data-edit="${o.i}">Editar</button></td></tr>`).join(''):`<tr><td colspan="${(s?.headers.length||1)+1}" style="padding:28px;text-align:center">No hay registros. Importá el Excel o agregá uno.</td></tr>`;
-  $('tbody').querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>openEditor(+b.dataset.edit));
-  $('pageInfo').textContent=list.length?`Página ${page+1} de ${max+1} · ${list.length} registros`:'0 registros';
-  $('prev').disabled=page===0;$('next').disabled=page>=max;$('add').disabled=!s;buildDashboard();applyDesign();
-}
-document.querySelectorAll('.mainTab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.mainTab').forEach(x=>x.classList.toggle('secondary',x!==b));document.querySelectorAll('#dashboard,#data,#pageEditor').forEach(x=>x.classList.toggle('active',x.id===b.dataset.page))});
-$('search').oninput=()=>{page=0;render()};$('filterCol').onchange=()=>{page=0;render()};$('filterVal').oninput=()=>{page=0;render()};
-$('resetFilter').onclick=()=>{$('search').value='';$('filterCol').value='';$('filterVal').value='';page=0;render()};
-$('prev').onclick=()=>{page--;render()};$('next').onclick=()=>{page++;render()};$('reload').onclick=fetchBook;
-function openEditor(i=null){
-  const s=active();if(!s)return;editIndex=i;const row=i===null?Array(s.headers.length).fill(''):[...s.rows[i]];
-  $('editorTitle').textContent=i===null?'Agregar registro':'Editar registro';
-  $('fields').innerHTML=s.headers.map((h,n)=>`<div class="field"><label>${esc(h)}</label><input data-field="${n}" value="${esc(row[n]??'')}"></div>`).join('');
-  $('deleteRow').style.display=i===null?'none':'inline-block';$('editor').showModal();
-}
-$('add').onclick=()=>openEditor();$('cancel').onclick=()=>$('editor').close();
-$('editForm').onsubmit=async e=>{e.preventDefault();const s=active(),r=s.headers.map((_,i)=>$('fields').querySelector(`[data-field="${i}"]`).value);if(editIndex===null)s.rows.push(r);else s.rows[editIndex]=r;$('editor').close();render();await persist()};
-$('deleteRow').onclick=async()=>{if(editIndex!==null&&confirm('¿Eliminar este registro?')){active().rows.splice(editIndex,1);$('editor').close();render();await persist()}};
-$('export').onclick=()=>{if(!book.sheets.length)return alert('No hay datos para exportar.');const wb=XLSX.utils.book_new();book.sheets.forEach(s=>XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([s.headers,...s.rows]),s.name.slice(0,31)));XLSX.writeFile(wb,'Stock_Fitin_Turboflit_actualizado.xlsx')};
+  <p id="loginStatus" class="status" role="status"></p>
+  <small>El acceso requiere un usuario habilitado en Supabase.</small>
+</section>
 
-function applyDesign(){
-  const d=currentDesign();
-  document.documentElement.style.setProperty('--navy',d.navy);document.documentElement.style.setProperty('--blue',d.blue);
-  document.documentElement.style.setProperty('--bg',d.bg);document.documentElement.style.setProperty('--card',d.card);
-  $('brandTitle').textContent=d.brandTitle;$('brandSubtitle').textContent=d.brandSubtitle;
-  $('dashTitle').textContent=d.dashTitle;$('dashDescription').textContent=d.dashDescription;
-  const widgetMap={products:'products',units:'units',locations:'locations',consignments:'consignments',productTable:'productTable',locationTable:'locationTable',consignmentTable:'consignmentTable'};
-  Object.entries(widgetMap).forEach(([key,attr])=>{
-    document.querySelectorAll(`[data-widget="${attr}"]`).forEach(el=>el.classList.toggle('hidden',!d.widgets[key]));
-  });
-  $('pageBrand').value=d.brandTitle;$('pageSubtitle').value=d.brandSubtitle;$('pageDashTitle').value=d.dashTitle;$('pageDashDesc').value=d.dashDescription;
-  $('pageNavy').value=d.navy;$('pageBlue').value=d.blue;$('pageBg').value=d.bg;$('pageCard').value=d.card;
+<section id="app">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div>
+        <h1 id="pageTitle">Stock Fitin</h1>
+        <p id="pageSubtitle">Gestión de registros · Turboflit</p>
+      </div>
+      <div class="toolbar">
+        <span id="userEmail"></span>
+        <button class="secondary" id="logoutBtn">Cerrar sesión</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <nav class="tabs">
+      <button class="active" data-tab="dashboard">Inicio</button>
+      <button data-tab="records">Registros</button>
+      <button data-tab="design">Diseño de página</button>
+    </nav>
+
+    <section id="dashboardTab">
+      <div class="panel">
+        <h2 id="dashboardTitle">Panel principal</h2>
+        <p id="dashboardDescription" class="muted">Resumen de tus registros.</p>
+        <div class="grid" id="stats"></div>
+      </div>
+      <div class="panel">
+        <h3>Datos disponibles</h3>
+        <p id="summaryText"></p>
+        <button id="goRecords">Ver registros</button>
+      </div>
+    </section>
+
+    <section id="recordsTab" class="hidden">
+      <div class="panel">
+        <h2 id="recordsTitle">Registros</h2>
+        <p id="recordsDescription" class="muted">Importá, agregá y editá información.</p>
+        <div class="toolbar">
+          <label for="sheetSelect">Tabla:</label>
+          <select id="sheetSelect" style="max-width:260px"></select>
+          <button id="newSheetBtn" class="secondary">Nueva tabla</button>
+          <button id="renameSheetBtn" class="secondary">Renombrar tabla</button>
+          <button id="deleteSheetBtn" class="danger">Eliminar tabla</button>
+        </div>
+        <div class="toolbar">
+          <input id="searchInput" placeholder="Buscar en los registros...">
+          <button id="addRowBtn">Agregar fila</button>
+          <button id="addColumnBtn" class="secondary">Agregar columna</button>
+        </div>
+        <div class="toolbar">
+          <button id="importBtn">Importar Excel</button>
+          <button id="exportBtn" class="secondary">Exportar Excel</button>
+          <button id="saveBtn">Guardar cambios</button>
+          <input id="excelFile" type="file" accept=".xlsx,.xls,.csv" class="hidden">
+        </div>
+        <p id="recordStatus" class="status" role="status"></p>
+        <div id="tableArea" class="table-wrap"></div>
+        <p class="muted">Podés editar las celdas directamente. Los cambios se guardan al presionar “Guardar cambios”.</p>
+      </div>
+    </section>
+
+    <section id="designTab" class="hidden">
+      <div class="panel">
+        <h2>Editor completo de diseño</h2>
+        <p class="muted">Modificá el aspecto de la página y guardá el diseño para compartirlo con los usuarios autorizados.</p>
+
+        <h3>1. Títulos y textos</h3>
+        <div class="design-grid">
+          <div><label for="dTitle">Título principal</label><input id="dTitle"></div>
+          <div><label for="dSubtitle">Subtítulo</label><input id="dSubtitle"></div>
+          <div><label for="dLoginTitle">Título de inicio de sesión</label><input id="dLoginTitle"></div>
+          <div><label for="dLoginSubtitle">Texto de inicio de sesión</label><input id="dLoginSubtitle"></div>
+          <div><label for="dDashboardTitle">Título del panel</label><input id="dDashboardTitle"></div>
+          <div><label for="dDashboardDescription">Descripción del panel</label><input id="dDashboardDescription"></div>
+          <div><label for="dRecordsTitle">Título de registros</label><input id="dRecordsTitle"></div>
+          <div><label for="dRecordsDescription">Descripción de registros</label><input id="dRecordsDescription"></div>
+        </div>
+
+        <hr style="border:0;border-top:1px solid var(--border);margin:24px 0">
+        <h3>2. Colores</h3>
+        <div class="design-grid" id="colorControls"></div>
+
+        <hr style="border:0;border-top:1px solid var(--border);margin:24px 0">
+        <h3>3. Tipografía y tamaños</h3>
+        <div class="design-grid">
+          <div>
+            <label for="dFont">Familia tipográfica</label>
+            <select id="dFont">
+              <option value="Arial, sans-serif">Arial</option>
+              <option value="'Segoe UI', sans-serif">Segoe UI</option>
+              <option value="Verdana, sans-serif">Verdana</option>
+              <option value="Tahoma, sans-serif">Tahoma</option>
+              <option value="Georgia, serif">Georgia</option>
+              <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
+              <option value="'Courier New', monospace">Courier New</option>
+            </select>
+          </div>
+          <div><label for="dFontSize">Tamaño del texto (px)</label><input id="dFontSize" type="number" min="11" max="24"></div>
+          <div><label for="dTitleSize">Tamaño del título (px)</label><input id="dTitleSize" type="number" min="18" max="48"></div>
+          <div><label for="dContentWidth">Ancho máximo (px)</label><input id="dContentWidth" type="number" min="700" max="2200" step="50"></div>
+        </div>
+
+        <hr style="border:0;border-top:1px solid var(--border);margin:24px 0">
+        <h3>4. Formato de paneles y botones</h3>
+        <div class="design-grid">
+          <div><label for="dRadius">Redondeo de esquinas (px)</label><input id="dRadius" type="number" min="0" max="40"></div>
+          <div><label for="dShadow">Intensidad de sombra</label><input id="dShadow" type="range" min="0" max="30"></div>
+          <div><label for="dGap">Separación entre bloques (px)</label><input id="dGap" type="number" min="4" max="40"></div>
+        </div>
+
+        <hr style="border:0;border-top:1px solid var(--border);margin:24px 0">
+        <h3>5. Elementos visibles</h3>
+        <div class="design-grid">
+          <label class="check-field"><input id="dShowStats" type="checkbox"> Mostrar indicadores del panel</label>
+          <label class="check-field"><input id="dShowDescription" type="checkbox"> Mostrar descripciones</label>
+          <label class="check-field"><input id="dShowFooter" type="checkbox"> Mostrar pie de página</label>
+        </div>
+
+        <div class="toolbar" style="margin-top:24px">
+          <button id="applyDesignBtn">Aplicar vista previa</button>
+          <button id="saveDesignBtn">Guardar diseño en Supabase</button>
+          <button id="resetDesignBtn" class="secondary">Restablecer diseño</button>
+        </div>
+        <p id="designStatus" class="status" role="status"></p>
+      </div>
+    </section>
+  </main>
+
+  <footer id="footer" class="footer">Stock Fitin · Turboflit</footer>
+</section>
+
+<script>
+"use strict";
+
+/* CONFIGURACIÓN DE SUPABASE */
+const SUPABASE_URL = "https://jgyeckanfjrqdfvinoaj.supabase.co";
+const SUPABASE_KEY = "sb_publishable_lLv-CsOrjj-weMWJgM2QHw_LNaiA4SW";
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const DEFAULT_DESIGN = {
+  title: "Stock Fitin",
+  subtitle: "Gestión de registros · Turboflit",
+  loginTitle: "Stock Fitin",
+  loginSubtitle: "Gestión de registros · Turboflit",
+  dashboardTitle: "Panel principal",
+  dashboardDescription: "Resumen de tus registros.",
+  recordsTitle: "Registros",
+  recordsDescription: "Importá, agregá y editá información.",
+  primary: "#3157d5",
+  header: "#18243a",
+  bg: "#f3f5fa",
+  card: "#ffffff",
+  text: "#202b3c",
+  muted: "#6b7280",
+  border: "#dfe4ed",
+  font: "Arial, sans-serif",
+  fontSize: 14,
+  titleSize: 26,
+  contentWidth: 1500,
+  radius: 14,
+  shadow: 7,
+  gap: 16,
+  showStats: true,
+  showDescription: true,
+  showFooter: true
+};
+
+let currentUser = null;
+let book = {
+  sheets: [{ name: "Registros", rows: [] }],
+  active: 0,
+  design: { ...DEFAULT_DESIGN }
+};
+let busy = false;
+
+const $ = id => document.getElementById(id);
+
+function status(id, message, error = false) {
+  const el = $(id);
+  el.textContent = message;
+  el.className = "status " + (error ? "error" : "success");
 }
-function readPageDesign(){
-  const d=currentDesign();
-  d.brandTitle=$('pageBrand').value.trim()||DEFAULT_DESIGN.brandTitle;
-  d.brandSubtitle=$('pageSubtitle').value.trim();d.dashTitle=$('pageDashTitle').value.trim()||DEFAULT_DESIGN.dashTitle;
-  d.dashDescription=$('pageDashDesc').value.trim();d.navy=$('pageNavy').value;d.blue=$('pageBlue').value;d.bg=$('pageBg').value;d.card=$('pageCard').value;
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function currentSheet() {
+  return book.sheets[book.active] || book.sheets[0];
+}
+
+function escapeHTML(value) {
+  return String(value ?? "").replace(/[&<>"']/g, ch => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;",
+    '"': "&quot;", "'": "&#39;"
+  }[ch]));
+}
+
+function setTab(tab) {
+  ["dashboard", "records", "design"].forEach(name => {
+    $(name + "Tab").classList.toggle("hidden", name !== tab);
+  });
+  document.querySelectorAll(".tabs button").forEach(button => {
+    button.classList.toggle("active", button.dataset.tab === tab);
+  });
+  if (tab === "records") renderRecords();
+  if (tab === "dashboard") renderDashboard();
+}
+
+document.querySelectorAll(".tabs button").forEach(button => {
+  button.addEventListener("click", () => setTab(button.dataset.tab));
+});
+$("goRecords").addEventListener("click", () => setTab("records"));
+
+/* AUTENTICACIÓN */
+$("loginForm").addEventListener("submit", async event => {
+  event.preventDefault();
+  status("loginStatus", "Iniciando sesión...");
+  const email = $("email").value.trim();
+  const password = $("password").value;
+
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) {
+    status("loginStatus", "No se pudo iniciar sesión: " + error.message, true);
+    return;
+  }
+  currentUser = data.user;
+  await showApplication();
+});
+
+$("logoutBtn").addEventListener("click", async () => {
+  await sb.auth.signOut();
+  currentUser = null;
+  $("app").style.display = "none";
+  $("login").style.display = "block";
+});
+
+sb.auth.onAuthStateChange((event, session) => {
+  if (session?.user && !currentUser) {
+    currentUser = session.user;
+    setTimeout(() => showApplication(), 0);
+  }
+});
+
+async function showApplication() {
+  if (busy) return;
+  busy = true;
+  $("login").style.display = "none";
+  $("app").style.display = "block";
+  $("userEmail").textContent = currentUser?.email || "";
+  status("recordStatus", "Cargando datos...");
+  try {
+    await loadBook();
+    populateDesignForm();
+    applyDesign();
+    renderAll();
+    status("recordStatus", "Datos cargados.");
+  } catch (error) {
+    status("recordStatus", error.message, true);
+  } finally {
+    busy = false;
+  }
+}
+
+/* CARGA Y GUARDADO DE DATOS */
+async function loadBook() {
+  const { data, error } = await sb
+    .from("app_state")
+    .select("data")
+    .eq("id", 1)
+    .maybeSingle();
+
+  if (error) throw new Error("Error leyendo Supabase: " + error.message);
+
+  if (data?.data && typeof data.data === "object") {
+    const saved = data.data;
+    book = {
+      sheets: Array.isArray(saved.sheets) && saved.sheets.length
+        ? saved.sheets : [{ name: "Registros", rows: [] }],
+      active: Number.isInteger(saved.active) ? saved.active : 0,
+      design: { ...DEFAULT_DESIGN, ...(saved.design || {}) }
+    };
+  } else {
+    book = {
+      sheets: [{ name: "Registros", rows: [] }],
+      active: 0,
+      design: { ...DEFAULT_DESIGN }
+    };
+  }
+
+  if (book.active < 0 || book.active >= book.sheets.length) book.active = 0;
+  book.sheets.forEach(sheet => {
+    if (!Array.isArray(sheet.rows)) sheet.rows = [];
+    if (!sheet.name) sheet.name = "Registros";
+  });
+}
+
+async function saveBook(successMessage = "Cambios guardados en Supabase.") {
+  if (!currentUser) {
+    throw new Error("Iniciá sesión para guardar los cambios.");
+  }
+
+  const payload = {
+    id: 1,
+    data: book,
+    updated_by: currentUser.id,
+    updated_at: new Date().toISOString()
+  };
+
+  const { error } = await sb
+    .from("app_state")
+    .upsert(payload, { onConflict: "id" });
+
+  if (error) throw new Error("No se pudo guardar: " + error.message);
+  status("recordStatus", successMessage);
+}
+
+/* TABLAS Y REGISTROS */
+function getColumns(rows) {
+  const columns = [];
+  rows.forEach(row => {
+    Object.keys(row || {}).forEach(key => {
+      if (!columns.includes(key)) columns.push(key);
+    });
+  });
+  return columns;
+}
+
+function renderAll() {
+  renderSheetSelect();
+  renderRecords();
+  renderDashboard();
+}
+
+function renderSheetSelect() {
+  const select = $("sheetSelect");
+  select.innerHTML = "";
+  book.sheets.forEach((sheet, index) => {
+    const option = document.createElement("option");
+    option.value = index;
+    option.textContent = sheet.name;
+    select.appendChild(option);
+  });
+  select.value = String(book.active);
+}
+
+$("sheetSelect").addEventListener("change", () => {
+  book.active = Number($("sheetSelect").value);
+  renderRecords();
+  renderDashboard();
+});
+
+function renderRecords() {
+  if (!book.sheets.length) {
+    book.sheets = [{ name: "Registros", rows: [] }];
+    book.active = 0;
+  }
+  renderSheetSelect();
+
+  const sheet = currentSheet();
+  const columns = getColumns(sheet.rows);
+  const query = $("searchInput").value.trim().toLowerCase();
+  const filtered = sheet.rows
+    .map((row, index) => ({ row, index }))
+    .filter(item => !query || Object.values(item.row).some(value =>
+      String(value ?? "").toLowerCase().includes(query)
+    ));
+
+  if (!columns.length) {
+    $("tableArea").innerHTML =
+      '<div style="padding:20px">Esta tabla está vacía. Importá un Excel o agregá una columna y una fila.</div>';
+    return;
+  }
+
+  let html = "<table><thead><tr>";
+  columns.forEach(col => html += "<th>" + escapeHTML(col) + "</th>");
+  html += "<th>Acciones</th></tr></thead><tbody>";
+
+  filtered.forEach(item => {
+    html += "<tr>";
+    columns.forEach(col => {
+      html += '<td contenteditable="true" data-row="' + item.index +
+        '" data-col="' + escapeHTML(col) + '">' +
+        escapeHTML(item.row[col] ?? "") + "</td>";
+    });
+    html += '<td><div class="actions"><button class="danger" data-delete="' +
+      item.index + '">Eliminar</button></div></td></tr>';
+  });
+
+  html += "</tbody></table>";
+  $("tableArea").innerHTML = html;
+
+  $("tableArea").querySelectorAll("td[contenteditable]").forEach(cell => {
+    cell.addEventListener("blur", () => {
+      const rowIndex = Number(cell.dataset.row);
+      const column = cell.dataset.col;
+      sheet.rows[rowIndex][column] = cell.textContent.trim();
+    });
+    cell.addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        cell.blur();
+      }
+    });
+  });
+
+  $("tableArea").querySelectorAll("[data-delete]").forEach(button => {
+    button.addEventListener("click", () => {
+      const index = Number(button.dataset.delete);
+      if (!confirm("¿Eliminar esta fila?")) return;
+      sheet.rows.splice(index, 1);
+      renderRecords();
+      renderDashboard();
+    });
+  });
+}
+
+$("searchInput").addEventListener("input", renderRecords);
+
+$("addRowBtn").addEventListener("click", () => {
+  const sheet = currentSheet();
+  let columns = getColumns(sheet.rows);
+  if (!columns.length) {
+    const firstColumn = prompt("Nombre de la primera columna:", "Nombre");
+    if (!firstColumn) return;
+    columns = [firstColumn.trim()];
+  }
+  const row = {};
+  columns.forEach(column => row[column] = "");
+  sheet.rows.push(row);
+  renderRecords();
+  renderDashboard();
+});
+
+$("addColumnBtn").addEventListener("click", () => {
+  const name = prompt("Nombre de la nueva columna:");
+  if (!name?.trim()) return;
+  const column = name.trim();
+  const sheet = currentSheet();
+  if (getColumns(sheet.rows).includes(column)) {
+    alert("Esa columna ya existe.");
+    return;
+  }
+  sheet.rows.forEach(row => row[column] = "");
+  if (!sheet.rows.length) sheet.rows.push({ [column]: "" });
+  renderRecords();
+});
+
+$("newSheetBtn").addEventListener("click", () => {
+  const name = prompt("Nombre de la nueva tabla:");
+  if (!name?.trim()) return;
+  book.sheets.push({ name: name.trim(), rows: [] });
+  book.active = book.sheets.length - 1;
+  renderAll();
+});
+
+$("renameSheetBtn").addEventListener("click", () => {
+  const name = prompt("Nuevo nombre de la tabla:", currentSheet().name);
+  if (!name?.trim()) return;
+  currentSheet().name = name.trim();
+  renderSheetSelect();
+});
+
+$("deleteSheetBtn").addEventListener("click", () => {
+  if (book.sheets.length === 1) {
+    alert("Debe quedar al menos una tabla.");
+    return;
+  }
+  if (!confirm("¿Eliminar la tabla y todos sus registros?")) return;
+  book.sheets.splice(book.active, 1);
+  book.active = 0;
+  renderAll();
+});
+
+$("saveBtn").addEventListener("click", async () => {
+  try {
+    status("recordStatus", "Guardando...");
+    await saveBook();
+    renderDashboard();
+  } catch (error) {
+    status("recordStatus", error.message, true);
+  }
+});
+
+/* IMPORTACIÓN Y EXPORTACIÓN EXCEL */
+$("importBtn").addEventListener("click", () => $("excelFile").click());
+
+$("excelFile").addEventListener("change", async event => {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  try {
+    if (!window.XLSX) throw new Error("No se pudo cargar la librería de Excel.");
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: "array" });
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(firstSheet, {
+      defval: "", raw: false
+    });
+
+    const name = file.name.replace(/\.(xlsx|xls|csv)$/i, "");
+    const existing = book.sheets.findIndex(sheet => sheet.name === name);
+    if (existing >= 0) {
+      if (!confirm("Ya existe una tabla con ese nombre. ¿Reemplazarla?")) return;
+      book.sheets[existing].rows = rows;
+      book.active = existing;
+    } else {
+      book.sheets.push({ name, rows });
+      book.active = book.sheets.length - 1;
+    }
+
+    renderAll();
+    status("recordStatus", "Excel importado. Presioná Guardar cambios para conservarlo.");
+  } catch (error) {
+    status("recordStatus", error.message, true);
+  } finally {
+    event.target.value = "";
+  }
+});
+
+$("exportBtn").addEventListener("click", () => {
+  if (!window.XLSX) {
+    status("recordStatus", "No se pudo cargar la librería de Excel.", true);
+    return;
+  }
+  const sheet = currentSheet();
+  const ws = XLSX.utils.json_to_sheet(sheet.rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheet.name.slice(0, 31) || "Registros");
+  XLSX.writeFile(wb, (sheet.name || "registros") + ".xlsx");
+});
+
+/* EDITOR DE DISEÑO */
+const colorFields = [
+  ["primary", "Botones y color principal"],
+  ["header", "Encabezado y encabezados de tabla"],
+  ["bg", "Fondo de la página"],
+  ["card", "Fondo de paneles y campos"],
+  ["text", "Texto principal"],
+  ["muted", "Texto secundario"],
+  ["border", "Bordes y separadores"]
+];
+
+function buildColorControls() {
+  $("colorControls").innerHTML = "";
+  colorFields.forEach(([key, labelText]) => {
+    const wrapper = document.createElement("div");
+    const label = document.createElement("label");
+    label.textContent = labelText;
+    const row = document.createElement("div");
+    row.className = "color-field";
+    const picker = document.createElement("input");
+    picker.type = "color";
+    picker.id = "color_" + key;
+    const textInput = document.createElement("input");
+    textInput.id = "hex_" + key;
+    textInput.placeholder = "#ffffff";
+    textInput.maxLength = 7;
+
+    picker.addEventListener("input", () => {
+      textInput.value = picker.value;
+      previewDesignFromForm();
+    });
+    textInput.addEventListener("change", () => {
+      if (/^#[0-9a-fA-F]{6}$/.test(textInput.value)) {
+        picker.value = textInput.value;
+        previewDesignFromForm();
+      }
+    });
+
+    row.append(picker, textInput);
+    wrapper.append(label, row);
+    $("colorControls").appendChild(wrapper);
+  });
+}
+
+buildColorControls();
+
+function populateDesignForm() {
+  const d = { ...DEFAULT_DESIGN, ...book.design };
+  const mapping = {
+    dTitle: "title",
+    dSubtitle: "subtitle",
+    dLoginTitle: "loginTitle",
+    dLoginSubtitle: "loginSubtitle",
+    dDashboardTitle: "dashboardTitle",
+    dDashboardDescription: "dashboardDescription",
+    dRecordsTitle: "recordsTitle",
+    dRecordsDescription: "recordsDescription",
+    dFont: "font",
+    dFontSize: "fontSize",
+    dTitleSize: "titleSize",
+    dContentWidth: "contentWidth",
+    dRadius: "radius",
+    dShadow: "shadow",
+    dGap: "gap",
+    dShowStats: "showStats",
+    dShowDescription: "showDescription",
+    dShowFooter: "showFooter"
+  };
+
+  Object.entries(mapping).forEach(([elementId, key]) => {
+    const el = $(elementId);
+    if (el.type === "checkbox") el.checked = Boolean(d[key]);
+    else el.value = d[key] ?? "";
+  });
+
+  colorFields.forEach(([key]) => {
+    $("color_" + key).value = d[key];
+    $("hex_" + key).value = d[key];
+  });
+}
+
+function readDesignForm() {
+  const d = { ...DEFAULT_DESIGN };
+  const mapping = {
+    dTitle: "title",
+    dSubtitle: "subtitle",
+    dLoginTitle: "loginTitle",
+    dLoginSubtitle: "loginSubtitle",
+    dDashboardTitle: "dashboardTitle",
+    dDashboardDescription: "dashboardDescription",
+    dRecordsTitle: "recordsTitle",
+    dRecordsDescription: "recordsDescription",
+    dFont: "font",
+    dFontSize: "fontSize",
+    dTitleSize: "titleSize",
+    dContentWidth: "contentWidth",
+    dRadius: "radius",
+    dShadow: "shadow",
+    dGap: "gap"
+  };
+
+  Object.entries(mapping).forEach(([elementId, key]) => {
+    const el = $(elementId);
+    d[key] = ["font"].includes(key) ? el.value : Number(el.value);
+    if (["title", "subtitle", "loginTitle", "loginSubtitle",
+         "dashboardTitle", "dashboardDescription",
+         "recordsTitle", "recordsDescription"].includes(key)) {
+      d[key] = el.value;
+    }
+  });
+
+  d.showStats = $("dShowStats").checked;
+  d.showDescription = $("dShowDescription").checked;
+  d.showFooter = $("dShowFooter").checked;
+
+  colorFields.forEach(([key]) => {
+    const value = $("hex_" + key).value.trim();
+    d[key] = /^#[0-9a-fA-F]{6}$/.test(value)
+      ? value : DEFAULT_DESIGN[key];
+  });
+
+  d.fontSize = Math.min(24, Math.max(11, d.fontSize || 14));
+  d.titleSize = Math.min(48, Math.max(18, d.titleSize || 26));
+  d.contentWidth = Math.min(2200, Math.max(700, d.contentWidth || 1500));
+  d.radius = Math.min(40, Math.max(0, d.radius || 0));
+  d.shadow = Math.min(30, Math.max(0, d.shadow || 0));
+  d.gap = Math.min(40, Math.max(4, d.gap || 16));
   return d;
 }
-$('savePageDesign').onclick=async()=>{book.design=readPageDesign();applyDesign();await persist()};
-$('resetPageDesign').onclick=async()=>{if(!confirm('¿Restaurar los colores y títulos iniciales?'))return;book.design={...DEFAULT_DESIGN,widgets:{...DEFAULT_DESIGN.widgets}};applyDesign();await persist()};
-$('openDesign').onclick=()=>{
-  const d=currentDesign();$('designDashTitle').value=d.dashTitle;$('designDashDesc').value=d.dashDescription;
-  $('wProducts').checked=d.widgets.products;$('wUnits').checked=d.widgets.units;$('wLocations').checked=d.widgets.locations;$('wConsignments').checked=d.widgets.consignments;
-  $('wProductTable').checked=d.widgets.productTable;$('wLocationTable').checked=d.widgets.locationTable;$('wConsignmentTable').checked=d.widgets.consignmentTable;
-  $('designDialog').showModal();
-};
-$('cancelDesign').onclick=()=>$('designDialog').close();
-$('designForm').onsubmit=async e=>{
-  e.preventDefault();const d=currentDesign();
-  d.dashTitle=$('designDashTitle').value.trim()||DEFAULT_DESIGN.dashTitle;d.dashDescription=$('designDashDesc').value.trim();
-  d.widgets={products:$('wProducts').checked,units:$('wUnits').checked,locations:$('wLocations').checked,consignments:$('wConsignments').checked,productTable:$('wProductTable').checked,locationTable:$('wLocationTable').checked,consignmentTable:$('wConsignmentTable').checked};
-  book.design=d;$('designDialog').close();applyDesign();render();await persist();
-};
-init();
+
+function applyDesign() {
+  const d = { ...DEFAULT_DESIGN, ...book.design };
+  const root = document.documentElement;
+  root.style.setProperty("--primary", d.primary);
+  root.style.setProperty("--header", d.header);
+  root.style.setProperty("--bg", d.bg);
+  root.style.setProperty("--card", d.card);
+  root.style.setProperty("--text", d.text);
+  root.style.setProperty("--muted", d.muted);
+  root.style.setProperty("--border", d.border);
+  root.style.setProperty("--font", d.font);
+  root.style.setProperty("--font-size", d.fontSize + "px");
+  root.style.setProperty("--content-width", d.contentWidth + "px");
+  root.style.setProperty("--radius", d.radius + "px");
+  root.style.setProperty("--shadow",
+    "0 4px " + d.shadow + "px rgba(20,35,65," +
+    (d.shadow === 0 ? "0" : ".12") + ")");
+  root.style.setProperty("--design-gap", d.gap + "px");
+
+  $("pageTitle").textContent = d.title;
+  $("pageSubtitle").textContent = d.subtitle;
+  $("loginTitle").textContent = d.loginTitle;
+  $("loginSubtitle").textContent = d.loginSubtitle;
+  $("dashboardTitle").textContent = d.dashboardTitle;
+  $("dashboardDescription").textContent = d.dashboardDescription;
+  $("recordsTitle").textContent = d.recordsTitle;
+  $("recordsDescription").textContent = d.recordsDescription;
+  $("footer").textContent = d.title + " · Turboflit";
+  $("footer").classList.toggle("hidden", !d.showFooter);
+  $("stats").classList.toggle("hidden", !d.showStats);
+  $("dashboardDescription").classList.toggle("hidden", !d.showDescription);
+  $("recordsDescription").classList.toggle("hidden", !d.showDescription);
+  $("pageTitle").style.fontSize = d.titleSize + "px";
+
+  document.querySelectorAll(".grid").forEach(el => {
+    el.style.gap = d.gap + "px";
+  });
+  document.querySelectorAll(".tabs button").forEach(el => {
+    el.style.borderRadius = d.radius + "px";
+  });
+}
+
+function previewDesignFromForm() {
+  book.design = readDesignForm();
+  applyDesign();
+}
+
+$("applyDesignBtn").addEventListener("click", () => {
+  book.design = readDesignForm();
+  applyDesign();
+  status("designStatus", "Vista previa aplicada. Aún tenés que guardar para conservarla.");
+});
+
+$("saveDesignBtn").addEventListener("click", async () => {
+  try {
+    book.design = readDesignForm();
+    applyDesign();
+    status("designStatus", "Guardando diseño...");
+    await saveBook("Diseño guardado en Supabase.");
+    status("designStatus", "Diseño guardado y compartido con los usuarios que accedan a estos datos.");
+  } catch (error) {
+    status("designStatus", error.message, true);
+  }
+});
+
+$("resetDesignBtn").addEventListener("click", () => {
+  if (!confirm("¿Restablecer los valores predeterminados del diseño?")) return;
+  book.design = { ...DEFAULT_DESIGN };
+  populateDesignForm();
+  applyDesign();
+  status("designStatus", "Diseño predeterminado aplicado. Guardalo si querés conservarlo.");
+});
+
+[
+  "dTitle", "dSubtitle", "dLoginTitle", "dLoginSubtitle",
+  "dDashboardTitle", "dDashboardDescription",
+  "dRecordsTitle", "dRecordsDescription", "dFont", "dFontSize",
+  "dTitleSize", "dContentWidth", "dRadius", "dShadow", "dGap",
+  "dShowStats", "dShowDescription", "dShowFooter"
+].forEach(id => {
+  $(id).addEventListener("input", previewDesignFromForm);
+  $(id).addEventListener("change", previewDesignFromForm);
+});
+
+/* RESUMEN */
+function renderDashboard() {
+  const sheet = currentSheet();
+  const rows = sheet?.rows || [];
+  const columns = getColumns(rows);
+  const totalRows = rows.length;
+  const totalSheets = book.sheets.length;
+
+  $("stats").innerHTML = [
+    ["Tablas", totalSheets],
+    ["Registros", totalRows],
+    ["Columnas", columns.length]
+  ].map(([label, value]) =>
+    '<div class="stat"><span class="muted">' + label +
+    '</span><strong>' + value + "</strong></div>"
+  ).join("");
+
+  $("summaryText").textContent =
+    'Tabla actual: "' + (sheet?.name || "Registros") +
+    '". Contiene ' + totalRows + " registros y " +
+    columns.length + " columnas.";
+}
+
+/* APLICACIÓN INICIAL */
+(async function init() {
+  const { data } = await sb.auth.getSession();
+  if (data?.session?.user) {
+    currentUser = data.session.user;
+    await showApplication();
+  }
+})();
 </script>
 </body>
 </html>
