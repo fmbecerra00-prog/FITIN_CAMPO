@@ -1,20 +1,59 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Stock Fitin / Turboflit</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
-:root{--navy:#172b4d;--blue:#2457a7;--bg:#f4f6fa;--line:#dce2eb;--text:#1d2939}*{box-sizing:border-box}body{margin:0;font:15px/1.45 system-ui,Segoe UI,Arial;background:var(--bg);color:var(--text)}header{background:var(--navy);color:white;padding:20px clamp(16px,4vw,40px);display:flex;justify-content:space-between;align-items:center;gap:15px;flex-wrap:wrap}h1{font-size:23px;margin:0}header p{margin:4px 0;color:#dce7fa}.wrap{max-width:1500px;margin:auto;padding:20px}.panel{background:white;border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px}.actions,.tabs{display:flex;gap:8px;flex-wrap:wrap;align-items:center}button,.filelabel{border:0;border-radius:9px;padding:10px 14px;background:var(--blue);color:white;font-weight:600;cursor:pointer;font-size:14px}button.secondary,.filelabel.secondary{background:#e9eef7;color:#1b3765}button.danger{background:#a83232}input{padding:10px;border:1px solid #cbd5e1;border-radius:8px;font:inherit;max-width:100%}#search{flex:1;min-width:200px}.hint{color:#5d6b82;font-size:13px}.status{padding:10px;border-radius:8px;background:#eef5ff;margin-top:10px;white-space:pre-wrap}.tablewrap{overflow:auto;max-height:60vh;border:1px solid var(--line);border-radius:10px}table{border-collapse:collapse;width:100%;background:white;font-size:13px}th,td{padding:9px 10px;border-bottom:1px solid #e7ebf1;text-align:left;white-space:nowrap;max-width:320px}th{position:sticky;top:0;background:#edf2f9}td{overflow:hidden;text-overflow:ellipsis}.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.field label{display:block;font-size:12px;color:#536179;margin-bottom:4px}.field input{width:100%}dialog{border:0;border-radius:14px;max-width:760px;width:calc(100% - 24px);box-shadow:0 20px 60px #0003}dialog::backdrop{background:#172b4d77}.stats{display:flex;gap:12px;flex-wrap:wrap}.stat{background:#f5f8fc;border:1px solid var(--line);border-radius:10px;padding:10px 15px}.stat b{display:block;font-size:20px}.login{max-width:480px;margin:7vh auto}.login input{width:100%;margin:5px 0 12px}.hidden{display:none!important}@media(max-width:600px){.wrap{padding:12px}}
-</style></head><body>
-<header><div><h1>Stock Fitin / Turboflit</h1><p>Gestión online de stock, valorización y consignaciones</p></div><div class="actions"><span id="userLabel" class="hint" style="color:white"></span><button id="logout" class="secondary hidden">Cerrar sesión</button></div></header>
+:root{--navy:#172b4d;--blue:#2457a7;--bg:#f4f6fa;--line:#dce2eb;--text:#1d2939;--green:#13795b;--orange:#a75b12}
+*{box-sizing:border-box}body{margin:0;font:15px/1.45 system-ui,Segoe UI,Arial;background:var(--bg);color:var(--text)}
+header{background:var(--navy);color:white;padding:20px clamp(16px,4vw,40px);display:flex;justify-content:space-between;align-items:center;gap:15px;flex-wrap:wrap}
+h1{font-size:23px;margin:0}header p{margin:4px 0;color:#dce7fa}.wrap{max-width:1600px;margin:auto;padding:20px}
+.panel{background:white;border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px}
+.actions,.tabs{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+button,.filelabel{border:0;border-radius:9px;padding:10px 14px;background:var(--blue);color:white;font-weight:600;cursor:pointer;font-size:14px}
+button.secondary,.filelabel.secondary{background:#e9eef7;color:#1b3765}button.danger{background:#a83232}button:disabled{opacity:.45;cursor:not-allowed}
+input,select{padding:10px;border:1px solid #cbd5e1;border-radius:8px;font:inherit;max-width:100%}#search{flex:1;min-width:200px}
+.hint{color:#5d6b82;font-size:13px}.status{padding:10px;border-radius:8px;background:#eef5ff;margin-top:10px;white-space:pre-wrap}
+.tablewrap{overflow:auto;max-height:60vh;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;background:white;font-size:13px}th,td{padding:9px 10px;border-bottom:1px solid #e7ebf1;text-align:left;white-space:nowrap;max-width:320px}
+th{position:sticky;top:0;background:#edf2f9}td{overflow:hidden;text-overflow:ellipsis}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.field label{display:block;font-size:12px;color:#536179;margin-bottom:4px}.field input{width:100%}
+dialog{border:0;border-radius:14px;max-width:760px;width:calc(100% - 24px);box-shadow:0 20px 60px #0003}dialog::backdrop{background:#172b4d77}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.stat{background:#f5f8fc;border:1px solid var(--line);border-radius:10px;padding:14px}.stat b{display:block;font-size:23px;margin-bottom:2px}
+.login{max-width:480px;margin:7vh auto}.login input{width:100%;margin:5px 0 12px}.hidden{display:none!important}
+.page{display:none}.page.active{display:block}.dashgrid{display:grid;grid-template-columns:1.2fr 1fr;gap:16px}.panel h3{margin-top:0}.badge{display:inline-block;padding:4px 8px;border-radius:20px;background:#e4f5ec;color:var(--green);font-size:12px}.badge.warn{background:#fff0df;color:var(--orange)}.empty{padding:24px;text-align:center;color:#718096}.smallnote{font-size:12px;color:#718096;margin-top:8px}
+@media(max-width:850px){.dashgrid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.wrap{padding:12px}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+</head>
+<body>
+<header><div><h1>Stock Fitin / Turboflit</h1><p>Gestión online de stock, ubicaciones y consignaciones</p></div><div class="actions"><span id="userLabel" class="hint" style="color:white"></span><button id="logout" class="secondary hidden">Cerrar sesión</button></div></header>
 <main class="wrap">
 <section id="setup" class="panel hidden"><h2>Configurar conexión</h2><p>Ingresá la URL y la clave pública (anon/publishable) de tu proyecto Supabase. No pegues una service_role key.</p><label>Supabase Project URL<br><input id="sbUrl" placeholder="https://xxxxxxxx.supabase.co" style="width:100%"></label><br><br><label>Publishable/anon key<br><input id="sbKey" placeholder="sb_publishable_... o clave anon" style="width:100%"></label><br><br><button id="saveConfig">Guardar configuración</button><p class="hint">La configuración queda en este navegador. La seguridad real la aplican las políticas SQL de Supabase.</p></section>
 <section id="login" class="panel login hidden"><h2>Iniciar sesión</h2><p class="hint">Solo podrán entrar las cuentas autorizadas en las reglas de seguridad de la base de datos.</p><form id="loginForm"><label>Correo electrónico<input id="email" type="email" required autocomplete="username"></label><label>Contraseña<input id="password" type="password" required autocomplete="current-password"></label><button type="submit">Entrar</button></form><p id="loginMsg" class="status"></p></section>
 <section id="app" class="hidden">
-<div class="panel"><div class="stats"><div class="stat"><b id="sheetCount">0</b>Hojas</div><div class="stat"><b id="rowCount">0</b>Registros visibles</div><div class="stat"><b id="syncState">—</b>Estado de sincronización</div></div><p class="hint">Los cambios se guardan en Supabase y se comparten con los usuarios autorizados. Importar un libro reemplaza los datos actuales de la aplicación; hacé una copia de seguridad antes.</p>
-<div class="actions"><label class="filelabel" for="file">Importar Excel</label><input id="file" type="file" accept=".xlsx,.xls,.csv" hidden><button id="export" class="secondary">Exportar Excel</button><button id="add">+ Agregar registro</button><button id="reload" class="secondary">Recargar online</button></div><div id="status" class="status"></div></div>
+<div class="panel"><div class="stats"><div class="stat"><b id="sheetCount">0</b>Hojas importadas</div><div class="stat"><b id="rowCount">0</b>Registros visibles</div><div class="stat"><b id="productCount">0</b>Productos detectados</div><div class="stat"><b id="syncState">—</b>Sincronización</div></div><p class="hint">Los cambios se guardan en Supabase y se comparten con usuarios autorizados. Importar un libro reemplaza los datos actuales: exportá una copia de seguridad antes.</p><div class="actions"><label class="filelabel" for="file">Importar Excel</label><input id="file" type="file" accept=".xlsx,.xls,.csv" hidden><button id="export" class="secondary">Exportar Excel</button><button id="add">+ Agregar registro</button><button id="reload" class="secondary">Recargar online</button></div><div id="status" class="status"></div></div>
+<div class="tabs" id="tabsMain" style="margin-bottom:12px"><button class="mainTab" data-page="dashboard">Tablero principal</button><button class="mainTab secondary" data-page="data">Tablas de datos</button></div>
+<section id="dashboard" class="page active">
+<div class="panel"><h2>Tablero principal</h2><p class="hint">Resumen de existencias, ubicaciones y mercadería consignada, calculado a partir de las hojas de Excel importadas.</p>
+<div class="stats">
+<div class="stat"><b id="dashProducts">0</b>Productos distintos</div>
+<div class="stat"><b id="dashUnits">0</b>Unidades registradas</div>
+<div class="stat"><b id="dashLocations">0</b>Ubicaciones detectadas</div>
+<div class="stat"><b id="dashConsignments">0</b>Unidades en consignación</div>
+</div><p id="dashMessage" class="smallnote"></p></div>
+<div class="dashgrid">
+<div class="panel"><h3>Stock total por producto</h3><p class="hint">Suma las cantidades detectadas para un mismo producto en todas las ubicaciones.</p><div class="tablewrap"><table><thead><tr><th>Producto</th><th>Stock total</th><th>Ubicaciones</th></tr></thead><tbody id="dashProductRows"></tbody></table></div></div>
+<div class="panel"><h3>Stock por ubicación</h3><p class="hint">Detalle de las cantidades por depósito, local o ubicación.</p><div class="tablewrap"><table><thead><tr><th>Ubicación</th><th>Producto</th><th>Cantidad</th></tr></thead><tbody id="dashLocationRows"></tbody></table></div></div>
+</div>
+<div class="panel"><h3>Productos en consignación</h3><p class="hint">Se identifican por hoja con nombre relacionado a consignación o por una columna de estado/tipo que indique consignado. Verificá el resultado según los encabezados de tu archivo.</p><div class="tablewrap"><table><thead><tr><th>Producto</th><th>Cliente / destinatario</th><th>Cantidad consignada</th><th>Fecha / estado</th></tr></thead><tbody id="dashConsRows"></tbody></table></div></div>
+<div class="panel"><h3>Cómo detectar correctamente tus columnas</h3><p class="hint">El tablero intenta reconocer automáticamente encabezados habituales como Producto, Descripción, Código, Cantidad, Stock, Ubicación, Depósito, Cliente y Consignación. Si tu Excel usa otros nombres, puede que debamos ajustar las equivalencias para que los totales sean exactos.</p></div>
+</section>
+<section id="data" class="page">
 <div class="panel"><div id="tabs" class="tabs"></div><div class="actions"><input id="search" placeholder="Buscar por código, nombre o cualquier dato…"><select id="filterCol"><option value="">Todas las columnas</option></select><input id="filterVal" placeholder="Valor del filtro"><button id="resetFilter" class="secondary">Limpiar</button></div><p class="hint">Elegí una fila para editarla. Cada cambio se sincroniza con la base online.</p><div class="tablewrap"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table></div><div class="actions" style="margin-top:12px"><button id="prev" class="secondary">Anterior</button><span id="pageInfo" class="hint"></span><button id="next" class="secondary">Siguiente</button></div></div>
-</section><p class="hint">No compartas tu contraseña ni la clave service_role. Usá HTTPS y cuentas autorizadas.</p></main>
+</section></section><p class="hint">No compartas tu contraseña ni la clave service_role. Usá HTTPS y cuentas autorizadas.</p></main>
 <dialog id="editor"><form id="editForm"><h2 id="editorTitle">Registro</h2><div id="fields" class="fields"></div><div class="actions" style="margin-top:18px"><button type="submit">Guardar</button><button type="button" id="cancel" class="secondary">Cancelar</button><button type="button" id="deleteRow" class="danger" style="margin-left:auto">Eliminar</button></div></form></dialog>
 <script>
 const CONFIG_KEY='fitin_supabase_config';let sb=null,user=null,book={sheets:[],active:0},page=0,editIndex=null;const pageSize=100,$=id=>document.getElementById(id);
@@ -29,14 +68,64 @@ async function afterLogin(){$('userLabel').textContent=user.email;$('logout').cl
 $('logout').onclick=async()=>{await sb.auth.signOut();user=null;book={sheets:[],active:0};$('userLabel').textContent='';$('logout').classList.add('hidden');show('login')};
 async function fetchBook(){setSync('Cargando…');const {data,error}=await sb.from('app_state').select('data').eq('id',1).maybeSingle();if(error){setSync('Error');msg('No se pudieron leer los datos. Revisá que hayas ejecutado schema.sql y autorizado tu correo. Detalle: '+error.message);return}book=data?.data||{sheets:[],active:0};if(!book.sheets)book={sheets:[],active:0};book.active=Math.min(book.active||0,Math.max(0,book.sheets.length-1));render();setSync('Sincronizado');msg(book.sheets.length?'Datos cargados desde Supabase.':'Todavía no hay datos online. Importá el Excel para iniciar.')}
 function setSync(t){$('syncState').textContent=t}
-let saveTimer=null;async function persist(){if(!user)return;setSync('Guardando…');const payload={id:1,data:book,updated_by:user.id,updated_at:new Date().toISOString()};const {error}=await sb.from('app_state').upsert(payload,{onConflict:'id'});if(error){setSync('Error');msg('No se pudo guardar online: '+error.message+' Revisá las políticas RLS y el correo autorizado.');return false}setSync('Sincronizado');msg('Cambios guardados online.');return true}
-async function importWorkbook(wb){const next={sheets:wb.SheetNames.map(name=>{const matrix=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,defval:'',raw:false});const h=matrix.findIndex(r=>r.some(c=>String(c).trim()!==''));if(h<0)return{name,headers:['Dato'],rows:[]};const headers=matrix[h].map((x,i)=>String(x||`Columna ${i+1}`));return{name,headers,rows:matrix.slice(h+1).filter(r=>r.some(c=>String(c??'').trim()!=='')).map(r=>headers.map((_,i)=>r[i]??''))}}),active:0};if(!confirm('La importación reemplazará todos los datos actuales online. ¿Ya exportaste una copia de seguridad y querés continuar?'))return;book=next;render();if(await persist())msg('Excel importado y guardado online. Revisá las tres hojas y sus encabezados.')}
+async function persist(){if(!user)return;setSync('Guardando…');const payload={id:1,data:book,updated_by:user.id,updated_at:new Date().toISOString()};const {error}=await sb.from('app_state').upsert(payload,{onConflict:'id'});if(error){setSync('Error');msg('No se pudo guardar online: '+error.message+' Revisá las políticas RLS y el correo autorizado.');return false}setSync('Sincronizado');msg('Cambios guardados online.');return true}
+async function importWorkbook(wb){const next={sheets:wb.SheetNames.map(name=>{const matrix=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,defval:'',raw:false});const h=matrix.findIndex(r=>r.some(c=>String(c).trim()!==''));if(h<0)return{name,headers:['Dato'],rows:[]};const headers=matrix[h].map((x,i)=>String(x||`Columna ${i+1}`));return{name,headers,rows:matrix.slice(h+1).filter(r=>r.some(c=>String(c??'').trim()!=='')).map(r=>headers.map((_,i)=>r[i]??''))}}),active:0};if(!confirm('La importación reemplazará todos los datos actuales online. ¿Ya exportaste una copia de seguridad y querés continuar?'))return;book=next;render();if(await persist())msg('Excel importado y guardado online. Revisá las hojas y el tablero.')}
 $('file').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const wb=XLSX.read(await f.arrayBuffer(),{type:'array'});await importWorkbook(wb)}catch(err){msg('Error al leer Excel: '+err.message)}e.target.value=''};
-function render(){const s=active();$('tabs').innerHTML=book.sheets.map((x,i)=>`<button class="${i===book.active?'':'secondary'}" data-tab="${i}">${esc(x.name)} (${x.rows.length})</button>`).join('');$('tabs').querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{book.active=+b.dataset.tab;page=0;render()});$('sheetCount').textContent=book.sheets.length;const fc=$('filterCol').value,search=$('search').value.toLowerCase(),fv=$('filterVal').value.toLowerCase();$('filterCol').innerHTML='<option value="">Todas las columnas</option>'+(s?s.headers.map((h,i)=>`<option value="${i}">${esc(h)}</option>`).join(''):'');$('filterCol').value=fc;const list=(s?s.rows:[]).map((r,i)=>({r,i})).filter(o=>o.r.join(' ').toLowerCase().includes(search)&&(fc===''||String(o.r[+fc]??'').toLowerCase().includes(fv)));$('rowCount').textContent=list.length;const max=Math.max(0,Math.ceil(list.length/pageSize)-1);page=Math.min(page,max);const shown=list.slice(page*pageSize,(page+1)*pageSize);$('thead').innerHTML=s?'<tr>'+s.headers.map(h=>`<th>${esc(h)}</th>`).join('')+'<th>Acción</th></tr>':'';$('tbody').innerHTML=shown.length?shown.map(o=>'<tr>'+s.headers.map((_,i)=>`<td title="${esc(o.r[i])}">${esc(o.r[i])}</td>`).join('')+`<td><button class="secondary" data-edit="${o.i}">Editar</button></td></tr>`).join(''):`<tr><td colspan="${(s?.headers.length||1)+1}" style="padding:28px;text-align:center">No hay registros. Importá el Excel o agregá uno.</td></tr>`;$('tbody').querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>openEditor(+b.dataset.edit));$('pageInfo').textContent=list.length?`Página ${page+1} de ${max+1} · ${list.length} registros`:'0 registros';$('prev').disabled=page===0;$('next').disabled=page>=max;$('add').disabled=!s}
+function norm(v){return String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()}
+function findCol(headers,patterns){return headers.findIndex(h=>patterns.some(p=>p.test(norm(h))))}
+function numberVal(v){if(typeof v==='number')return v;let s=String(v??'').trim().replace(/\s/g,'');if(!s)return 0;if(/^-?\d{1,3}(\.\d{3})+,\d+$/.test(s))s=s.replace(/\./g,'').replace(',','.');else if(/^-?\d+,\d+$/.test(s))s=s.replace(',','.');else s=s.replace(/,/g,'');const n=Number(s.replace(/[^\d.-]/g,''));return Number.isFinite(n)?n:0}
+function getVal(row,i){return i<0?'':row[i]??''}
+function buildDashboard(){
+ const records=[],cons=[];
+ const productP=[/^(producto|nombre producto|articulo|descripcion|producto descripcion|item)$/,/codigo.*producto/];
+ const qtyP=[/^(stock|cantidad|existencia|existencias|unidades|cantidad stock|stock actual|saldo|cantidad actual|qty)$/,/cantidad.*(stock|disponible|existente)/,/stock.*(actual|total|fisico)/];
+ const locP=[/^(ubicacion|deposito|almacen|localizacion|sucursal|sector|estanteria|locacion)$/,/ubicacion|deposito|almacen|estanteria/];
+ const codeP=[/^(codigo|cod|sku|id producto|codigo articulo|referencia)$/,/codigo/];
+ const clientP=[/^(cliente|destinatario|consignatario|empresa|razon social)$/,/cliente|destinatario|consignatario/];
+ const dateP=[/fecha|vencimiento|devolucion|estado|situacion/];
+ const consSheetP=/consign|comodato|tercero|prestamo/;
+ for(const sh of book.sheets){
+   const hn=sh.headers.map(norm);
+   const pi=findCol(hn,productP), qi=findCol(hn,qtyP), li=findCol(hn,locP), ci=findCol(hn,codeP), cli=findCol(hn,clientP);
+   const stateI=hn.findIndex(h=>/consign|estado|situacion|tipo movimiento/.test(h));
+   const isConsSheet=consSheetP.test(norm(sh.name));
+   sh.rows.forEach((row,idx)=>{
+     const name=String(getVal(row,pi)||getVal(row,ci)||'').trim();
+     const code=String(getVal(row,ci)||'').trim();
+     const qty=numberVal(getVal(row,qi));
+     const loc=String(getVal(row,li)||'Sin ubicación').trim()||'Sin ubicación';
+     const state=String(getVal(row,stateI)||'').trim();
+     const isCons=isConsSheet||/consignad|consignacion|en tercero|prestamo/.test(norm(state));
+     if(name && qi>=0){
+       const rec={name,code,qty,loc,sheet:sh.name,row:idx};
+       if(isCons){cons.push({...rec,client:String(getVal(row,cli)||'No indicado'),detail:String(getVal(row,findCol(hn,dateP))||state||'Consignado')})}
+       else records.push(rec);
+     } else if(isCons && (name||qty)){
+       cons.push({name:name||code||'Producto sin identificar',code,qty,loc,sheet:sh.name,row:idx,client:String(getVal(row,cli)||'No indicado'),detail:state||'Consignado'});
+     }
+   });
+ }
+ const aggregate=new Map();
+ records.forEach(r=>{const key=norm(r.name||r.code);if(!aggregate.has(key))aggregate.set(key,{name:r.name,qty:0,locs:new Set()});const a=aggregate.get(key);a.qty+=r.qty;a.locs.add(r.loc)});
+ const productList=[...aggregate.values()].sort((a,b)=>a.name.localeCompare(b.name,'es'));
+ const locationList=records.map(r=>r).sort((a,b)=>a.loc.localeCompare(b.loc,'es')||a.name.localeCompare(b.name,'es'));
+ $('dashProducts').textContent=productList.length;
+ $('dashUnits').textContent=fmt(records.reduce((a,r)=>a+r.qty,0));
+ $('dashLocations').textContent=new Set(records.map(r=>r.loc)).size;
+ $('dashConsignments').textContent=fmt(cons.reduce((a,r)=>a+Math.max(0,r.qty),0));
+ $('productCount').textContent=productList.length;
+ $('dashProductRows').innerHTML=productList.length?productList.map(p=>`<tr><td>${esc(p.name)}</td><td>${fmt(p.qty)}</td><td>${esc([...p.locs].join(', '))}</td></tr>`).join(''):'<tr><td colspan="3" class="empty">No se detectaron datos de stock. Revisá los encabezados de producto, cantidad y ubicación.</td></tr>';
+ $('dashLocationRows').innerHTML=locationList.length?locationList.map(r=>`<tr><td>${esc(r.loc)}</td><td>${esc(r.name)}</td><td>${fmt(r.qty)}</td></tr>`).join(''):'<tr><td colspan="3" class="empty">No hay registros con cantidad y producto detectables.</td></tr>';
+ $('dashConsRows').innerHTML=cons.length?cons.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.client)}</td><td>${fmt(r.qty)}</td><td>${esc(r.detail)}</td></tr>`).join(''):'<tr><td colspan="4" class="empty">No se detectaron consignaciones. Si están en otra hoja o usan otros encabezados, habrá que ajustar la detección.</td></tr>';
+ const missing=book.sheets.filter(sh=>findCol(sh.headers,[...productP,...codeP])<0||findCol(sh.headers,qtyP)<0).map(sh=>sh.name);
+ $('dashMessage').textContent=book.sheets.length?`Hojas analizadas: ${book.sheets.length}. ${missing.length?'No se pudieron interpretar completamente estas hojas: '+missing.join(', ')+'.':''} Revisá que las columnas tengan encabezados claros.`:'Importá tu Excel para visualizar el tablero.';
+}
+function fmt(n){return Number(n||0).toLocaleString('es-AR',{maximumFractionDigits:2})}
+function render(){const s=active();$('tabs').innerHTML=book.sheets.map((x,i)=>`<button class="${i===book.active?'':'secondary'}" data-tab="${i}">${esc(x.name)} (${x.rows.length})</button>`).join('');$('tabs').querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{book.active=+b.dataset.tab;page=0;render()});$('sheetCount').textContent=book.sheets.length;const fc=$('filterCol').value,search=$('search').value.toLowerCase(),fv=$('filterVal').value.toLowerCase();$('filterCol').innerHTML='<option value="">Todas las columnas</option>'+(s?s.headers.map((h,i)=>`<option value="${i}">${esc(h)}</option>`).join(''):'');$('filterCol').value=fc;const list=(s?s.rows:[]).map((r,i)=>({r,i})).filter(o=>o.r.join(' ').toLowerCase().includes(search)&&(fc===''||String(o.r[+fc]??'').toLowerCase().includes(fv)));$('rowCount').textContent=list.length;const max=Math.max(0,Math.ceil(list.length/pageSize)-1);page=Math.min(page,max);const shown=list.slice(page*pageSize,(page+1)*pageSize);$('thead').innerHTML=s?'<tr>'+s.headers.map(h=>`<th>${esc(h)}</th>`).join('')+'<th>Acción</th></tr>':'';$('tbody').innerHTML=shown.length?shown.map(o=>'<tr>'+s.headers.map((_,i)=>`<td title="${esc(o.r[i])}">${esc(o.r[i])}</td>`).join('')+`<td><button class="secondary" data-edit="${o.i}">Editar</button></td></tr>`).join(''):`<tr><td colspan="${(s?.headers.length||1)+1}" style="padding:28px;text-align:center">No hay registros. Importá el Excel o agregá uno.</td></tr>`;$('tbody').querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>openEditor(+b.dataset.edit));$('pageInfo').textContent=list.length?`Página ${page+1} de ${max+1} · ${list.length} registros`:'0 registros';$('prev').disabled=page===0;$('next').disabled=page>=max;$('add').disabled=!s;buildDashboard()}
+document.querySelectorAll('.mainTab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.mainTab').forEach(x=>x.classList.toggle('secondary',x!==b));document.querySelectorAll('#dashboard,#data').forEach(x=>x.classList.toggle('active',x.id===b.dataset.page))});
 $('search').oninput=()=>{page=0;render()};$('filterCol').onchange=()=>{page=0;render()};$('filterVal').oninput=()=>{page=0;render()};$('resetFilter').onclick=()=>{$('search').value='';$('filterCol').value='';$('filterVal').value='';page=0;render()};$('prev').onclick=()=>{page--;render()};$('next').onclick=()=>{page++;render()};$('reload').onclick=fetchBook;
 function openEditor(i=null){const s=active();if(!s)return;editIndex=i;const row=i===null?Array(s.headers.length).fill(''):[...s.rows[i]];$('editorTitle').textContent=i===null?'Agregar registro':'Editar registro';$('fields').innerHTML=s.headers.map((h,n)=>`<div class="field"><label>${esc(h)}</label><input data-field="${n}" value="${esc(row[n]??'')}"></div>`).join('');$('deleteRow').style.display=i===null?'none':'inline-block';$('editor').showModal()}
 $('add').onclick=()=>openEditor();$('cancel').onclick=()=>$('editor').close();$('editForm').onsubmit=async e=>{e.preventDefault();const s=active(),r=s.headers.map((_,i)=>$('fields').querySelector(`[data-field="${i}"]`).value);if(editIndex===null)s.rows.push(r);else s.rows[editIndex]=r;$('editor').close();render();await persist()};$('deleteRow').onclick=async()=>{if(editIndex!==null&&confirm('¿Eliminar este registro?')){active().rows.splice(editIndex,1);$('editor').close();render();await persist()}};
 $('export').onclick=()=>{if(!book.sheets.length)return alert('No hay datos para exportar.');const wb=XLSX.utils.book_new();book.sheets.forEach(s=>XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([s.headers,...s.rows]),s.name.slice(0,31)));XLSX.writeFile(wb,'Stock_Fitin_Turboflit_actualizado.xlsx')};
 init();
 </script></body></html>
-
