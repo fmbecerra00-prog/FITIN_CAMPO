@@ -308,12 +308,35 @@ footer {text-align:center;color:var(--muted);padding:22px}
 </section>
 
 <script>
+// Evita que el formulario de acceso aparezca duplicado si el navegador o un estado restaurado lo inserta más de una vez.
+(function removeDuplicateLoginForms(){
+  function cleanup(){
+    const forms = document.querySelectorAll('#login');
+    for (let i = 1; i < forms.length; i++) forms[i].remove();
+    const loginForms = document.querySelectorAll('#loginForm');
+    for (let i = 1; i < loginForms.length; i++) {
+      const parent = loginForms[i].closest('#login') || loginForms[i].parentElement;
+      if (parent) parent.remove(); else loginForms[i].remove();
+    }
+  }
+  cleanup();
+  const observer = new MutationObserver(cleanup);
+  observer.observe(document.documentElement, {childList:true, subtree:true});
+  window.addEventListener('load', cleanup, {once:true});
+})();
+
 "use strict";
 
 /* CONFIGURACIÓN DE SUPABASE */
 const SUPABASE_URL = "https://jgyeckanfjrqdfvinoaj.supabase.co";
 const SUPABASE_KEY = "sb_publishable_lLv-CsOrjj-weMWJgM2QHw_LNaiA4SW";
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+if (!window.supabase || typeof window.supabase.createClient !== "function") {
+  document.getElementById("loginStatus").textContent = "No se pudo cargar la biblioteca de Supabase. Revisá la conexión a internet y recargá la página.";
+  throw new Error("Supabase JS no está disponible");
+}
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+});
 const $ = id => document.getElementById(id);
 
 const DEFAULT_DESIGN = {
@@ -381,59 +404,75 @@ function localDate() {
 }
 
 /* AUTENTICACIÓN */
+let loginInProgress = false;
 $("loginForm").addEventListener("submit", async e => {
   e.preventDefault();
-  if(busy) return;
+  if (loginInProgress) return;
 
-  const email=$("email").value.trim();
-  const password=$("password").value;
-  if(!email||!password) {
-    message("loginStatus","Ingresá tu correo y contraseña.",true);
+  const email = $("email").value.trim().toLowerCase();
+  const password = $("password").value;
+  if (!email || !password) {
+    message("loginStatus", "Ingresá el correo electrónico y la contraseña registrados en Supabase.", true);
+    return;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    message("loginStatus", "Tenés que ingresar el correo electrónico completo, no solo el nombre de usuario.", true);
     return;
   }
 
-  $("loginBtn").disabled=true;
-  $("loginBtn").textContent="Ingresando...";
-  message("loginStatus","Verificando acceso...");
-
+  loginInProgress = true;
+  $("loginBtn").disabled = true;
+  $("loginBtn").textContent = "Ingresando...";
+  message("loginStatus", "Verificando acceso...");
   try {
-    const {data,error}=await sb.auth.signInWithPassword({email,password});
-    if(error) throw error;
-    if(!data.user) throw new Error("Supabase no devolvió un usuario válido.");
-
-    currentUser=data.user;
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    if (!data?.user) throw new Error("Supabase no devolvió un usuario válido.");
+    currentUser = data.user;
     await startApp();
-  } catch(err) {
-    console.error("Error de inicio de sesión:",err);
-    const msg = err.message === "Invalid login credentials"
-      ? "Correo o contraseña incorrectos. Verificá que el usuario exista y esté habilitado en Supabase."
-      : (err.message || "No se pudo iniciar sesión.");
-    message("loginStatus",msg,true);
+  } catch (err) {
+    console.error("Error de inicio de sesión FITIN CAMPO:", err);
+    const raw = String(err?.message || err || "");
+    const lower = raw.toLowerCase();
+    let msg = raw || "No se pudo iniciar sesión.";
+    if (lower.includes("invalid login credentials")) {
+      msg = "Correo o contraseña incorrectos. Usá el correo exacto registrado en Supabase > Authentication > Users y su contraseña. Si no la recordás, restablecela en Supabase.";
+    } else if (lower.includes("email not confirmed")) {
+      msg = "El correo todavía no está confirmado. Confirmalo desde el email recibido o revisá el usuario en Supabase > Authentication > Users.";
+    } else if (lower.includes("failed to fetch") || lower.includes("networkerror") || lower.includes("load failed")) {
+      msg = "No se pudo conectar con Supabase. Verificá internet, que el proyecto siga activo y que la URL/clave pública sean las de ese proyecto. Probá abrir el HTML desde un servidor web, no desde una vista previa.";
+    } else if (lower.includes("invalid api key") || lower.includes("api key") || lower.includes("apikey")) {
+      msg = "Supabase rechazó la clave pública. Copiá la clave publishable/anon del mismo proyecto que figura en la URL y reemplazá SUPABASE_KEY en el archivo.";
+    } else if (lower.includes("app_state") || lower.includes("row-level security") || lower.includes("permission denied") || lower.includes("rls") || lower.includes("schema cache")) {
+      msg = "El inicio de sesión pudo ser correcto, pero Supabase no permite leer los datos de FITIN CAMPO. Hay que revisar la tabla app_state y sus permisos RLS. Detalle: " + raw;
+    }
+    message("loginStatus", msg, true);
   } finally {
-    $("loginBtn").disabled=false;
-    $("loginBtn").textContent="Iniciar sesión";
+    loginInProgress = false;
+    $("loginBtn").disabled = false;
+    $("loginBtn").textContent = "Iniciar sesión";
   }
 });
 
-$("logoutBtn").addEventListener("click",async()=>{
+$("logoutBtn").addEventListener("click", async () => {
   try {
-    const {error}=await sb.auth.signOut();
-    if(error) throw error;
-    currentUser=null;
-    $("app").style.display="none";
-    $("login").style.display="block";
-    $("password").value="";
-    message("loginStatus","Sesión cerrada.");
-  } catch(err) {
-    alert("No se pudo cerrar la sesión: "+err.message);
+    const { error } = await sb.auth.signOut();
+    if (error) throw error;
+    currentUser = null;
+    $("app").style.display = "none";
+    $("login").style.display = "block";
+    $("password").value = "";
+    message("loginStatus", "Sesión cerrada.");
+  } catch (err) {
+    alert("No se pudo cerrar la sesión: " + (err?.message || err));
   }
 });
 
-sb.auth.onAuthStateChange((event,session)=>{
-  if(event==="SIGNED_OUT") {
-    currentUser=null;
-    $("app").style.display="none";
-    $("login").style.display="block";
+sb.auth.onAuthStateChange((event) => {
+  if (event === "SIGNED_OUT") {
+    currentUser = null;
+    $("app").style.display = "none";
+    $("login").style.display = "block";
   }
 });
 
@@ -457,10 +496,31 @@ async function loadBook() {
   const saved=data.data;
   const defaults=makeDefaultBook();
 
+  const loadedSheets=Array.isArray(saved.sheets)&&saved.sheets.length?saved.sheets:defaults.sheets;
+  // Repara hojas importadas anteriormente con columnas numeradas (0, 1, 2...):
+  // usa la primera fila como encabezados cuando contiene los nombres reales.
+  loadedSheets.forEach(sh=>{
+    if(!Array.isArray(sh.rows)||!sh.rows.length) return;
+    const cols=columns(sh.rows);
+    if(!cols.length||!cols.every(k=>/^\d+$/.test(String(k)))) return;
+    const first=sh.rows[0]||{};
+    const headers=cols.map(k=>String(first[k]??"").trim());
+    if(!headers.some(Boolean)) return;
+    const used=new Set();
+    const uniqueHeaders=headers.map((h,i)=>{
+      let name=h||`Columna ${i+1}`, base=name, n=2;
+      while(used.has(name)) name=`${base} (${n++})`;
+      used.add(name); return name;
+    });
+    sh.rows=sh.rows.slice(1).map(row=>{
+      const out={}; cols.forEach((k,i)=>out[uniqueHeaders[i]]=row[k]??""); return out;
+    });
+  });
+
   book={
     ...defaults,
     ...saved,
-    sheets:Array.isArray(saved.sheets)&&saved.sheets.length?saved.sheets:defaults.sheets,
+    sheets:loadedSheets,
     design:{...DEFAULT_DESIGN,...(saved.design||{}),logos:Array.isArray(saved.design?.logos)?saved.design.logos:[]},
     tabLabels:{...DEFAULT_LABELS,...(saved.tabLabels||{})},
     customTabs:Array.isArray(saved.customTabs)?saved.customTabs:[],
@@ -507,10 +567,15 @@ async function startApp() {
     showTab("dashboard");
     $("loginStatus").textContent="";
   } catch(err) {
-    console.error("Error al iniciar:",err);
-    $("app").style.display="none";
-    $("login").style.display="block";
-    message("loginStatus",err.message||"No se pudo cargar la aplicación.",true);
+    console.error("Error al cargar FITIN CAMPO:", err);
+    $("app").style.display = "none";
+    $("login").style.display = "block";
+    const raw = String(err?.message || err || "No se pudo cargar la aplicación.");
+    const lower = raw.toLowerCase();
+    const msg = (lower.includes("app_state") || lower.includes("row-level security") || lower.includes("permission denied") || lower.includes("rls") || lower.includes("schema cache"))
+      ? "El correo y la contraseña pueden ser correctos, pero la tabla app_state no permite acceder a los datos. Revisá que exista y que tenga permisos RLS para usuarios autenticados. Detalle: " + raw
+      : raw;
+    message("loginStatus", msg, true);
   } finally {
     busy=false;
   }
@@ -664,7 +729,18 @@ $("excelFile").onchange=async e=>{
   const f=e.target.files[0];if(!f)return;
   try {
     const wb=XLSX.read(await f.arrayBuffer(),{type:"array"});
-    const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:"",raw:false});
+    const matrix=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:"",raw:false});
+    if(!matrix.length) throw new Error("El archivo no contiene filas para importar.");
+    const rawHeaders=matrix[0].map(v=>String(v??"").trim());
+    const usedHeaders=new Set();
+    const headers=rawHeaders.map((h,i)=>{
+      let name=h||`Columna ${i+1}`,base=name,n=2;
+      while(usedHeaders.has(name)) name=`${base} (${n++})`;
+      usedHeaders.add(name);return name;
+    });
+    const rows=matrix.slice(1).filter(row=>row.some(v=>String(v??"").trim()!=="")).map(row=>{
+      const obj={};headers.forEach((h,i)=>obj[h]=row[i]??"");return obj;
+    });
     const name=f.name.replace(/\.(xlsx|xls|csv)$/i,"");
     let i=book.sheets.findIndex(s=>s.name===name);
     if(i>=0) {
