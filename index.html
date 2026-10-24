@@ -800,9 +800,11 @@ $("excelFile").onchange=async e=>{
   try {
     if(typeof XLSX==="undefined") throw new Error("No se pudo cargar el lector de Excel. Revisá la conexión a internet y volvé a intentarlo.");
     const buffer=await f.arrayBuffer();
-    const wb=XLSX.read(buffer,{type:"array", cellDates:false, bookSheets:false, bookProps:false});
+    const wb=XLSX.read(buffer,{type:"array", cellDates:false});
     const worksheetNames=Array.isArray(wb.SheetNames)?wb.SheetNames:[];
     if(!worksheetNames.length) throw new Error("El archivo no contiene hojas de Excel reconocibles.");
+    console.info("FITIN CAMPO: hojas detectadas en el Excel", worksheetNames);
+    message("recordsStatus", `Excel detectado: ${worksheetNames.length} hoja(s): ${worksheetNames.join(" · ")}. Preparando importación...`);
 
     const fileBase=f.name.replace(/\.(xlsx|xls|xlsm|xlsb|csv)$/i,"").trim()||"Importación";
     const imported=[];
