@@ -3,986 +3,810 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Stock Fitin | Turboflit</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FITIN CAMPO | Gestión de stock</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
 
 <style>
-:root {
-  --primary: #3157d5;
-  --header: #18243a;
-  --bg: #f3f5fa;
-  --card: #ffffff;
-  --text: #202b3c;
-  --muted: #6b7280;
-  --border: #dfe4ed;
-  --radius: 14px;
-  --font: Arial, sans-serif;
-  --font-size: 14px;
-  --content-width: 1500px;
-  --shadow: 0 4px 18px rgba(20,35,65,.07);
+:root{
+ --primary:#3157d5;--header:#18243a;--bg:#f3f5fa;--card:#fff;
+ --text:#202b3c;--muted:#6b7280;--border:#dfe4ed;
+ --radius:14px;--font:Arial,sans-serif;--font-size:14px;
+ --content-width:1600px;--gap:16px;
 }
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font);
-  font-size: var(--font-size);
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+ font-family:var(--font);font-size:var(--font-size)}
+button,input,select,textarea{font:inherit}
+button{border:0;border-radius:8px;background:var(--primary);color:white;
+ padding:10px 14px;cursor:pointer}
+button:hover{filter:brightness(.94)}
+button.secondary{background:var(--card);color:var(--text);border:1px solid var(--border)}
+button.danger{background:#bd3545}
+input,select,textarea{width:100%;padding:9px;border:1px solid var(--border);
+ border-radius:8px;background:var(--card);color:var(--text)}
+label{display:block;font-weight:600;margin:8px 0 5px}
+small,.muted{color:var(--muted)}
+hr{border:0;border-top:1px solid var(--border);margin:20px 0}
+#login{max-width:420px;margin:8vh auto;background:var(--card);
+ padding:28px;border-radius:var(--radius);box-shadow:0 5px 24px #17233a12}
+#app{display:none}
+header{background:var(--header);color:white;padding:20px}
+.header-inner{max-width:var(--content-width);margin:auto;display:flex;
+ justify-content:space-between;align-items:center;gap:15px;flex-wrap:wrap}
+header h1{margin:0;font-size:28px}
+header p{margin:6px 0 0;opacity:.8}
+.container{max-width:var(--content-width);margin:auto;padding:22px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
+.tabs button{background:#e5eaf5;color:#25324b}
+.tabs button.active{background:var(--primary);color:#fff}
+.panel{background:var(--card);border:1px solid var(--border);
+ border-radius:var(--radius);padding:20px;margin-bottom:var(--gap);
+ min-width:0;box-shadow:0 4px 18px #17233a0b}
+.panel h2,.panel h3{margin-top:0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:var(--gap)}
+.stat{background:var(--card);border:1px solid var(--border);
+ border-radius:var(--radius);padding:18px;min-width:0}
+.stat strong{display:block;font-size:27px;margin-top:9px;overflow-wrap:anywhere}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0}
+.toolbar input{flex:1;min-width:160px}
+.design-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+.table-wrap{overflow:auto;max-width:100%;border:1px solid var(--border);border-radius:10px}
+table{width:100%;border-collapse:collapse;background:var(--card)}
+th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--border)}
+th{background:var(--header);color:#fff;white-space:nowrap}
+td[contenteditable="true"]:focus{outline:2px solid var(--primary)}
+.status{min-height:20px;margin:10px 0}
+.error{color:#bd3545}.success{color:#16834b}
+.hidden{display:none!important}
+.color-field{display:flex;gap:8px;align-items:center}
+.color-field input[type=color]{width:50px;height:38px;padding:2px}
+.check{display:flex;align-items:center;gap:8px}
+.check input{width:auto}
+.widget-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:var(--gap)}
+.widget{grid-column:span 6;min-width:0}
+.widget.span12{grid-column:span 12}
+.widget.span4{grid-column:span 4}
+.widget .panel{height:100%;margin:0}
+.widget canvas{max-height:340px}
+.widget-head{display:flex;justify-content:space-between;gap:10px;align-items:start}
+.widget-head h3{margin:0 0 12px}
+.widget-head button{padding:5px 8px}
+.editor-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;
+ border:1px solid var(--border);border-radius:10px;padding:12px;margin:10px 0}
+#stockPrintHeader{display:none}
+footer{text-align:center;color:var(--muted);padding:22px}
+@media(max-width:760px){
+ .container{padding:12px}.panel{padding:14px}
+ .widget,.widget.span4{grid-column:span 12}
+ header h1{font-size:23px}
 }
-button, input, select, textarea { font: inherit; }
-button {
-  border: 0;
-  padding: 10px 14px;
-  border-radius: 8px;
-  cursor: pointer;
-  background: var(--primary);
-  color: white;
-}
-button:hover { filter: brightness(.94); }
-button.secondary {
-  background: var(--card);
-  color: var(--text);
-  border: 1px solid var(--border);
-}
-button.danger { background: #c53c4a; }
-input, select, textarea {
-  width: 100%;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--card);
-  color: var(--text);
-}
-label { display: block; font-weight: 600; margin-bottom: 6px; }
-small, .muted { color: var(--muted); }
-#login {
-  max-width: 420px;
-  margin: 9vh auto;
-  padding: 30px;
-  background: var(--card);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-}
-#login h1 { margin-top: 0; }
-.field { margin: 14px 0; }
-#app { display: none; }
-.topbar {
-  background: var(--header);
-  color: white;
-  padding: 20px;
-}
-.topbar-inner {
-  max-width: var(--content-width);
-  margin: auto;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 20px;
-  flex-wrap: wrap;
-}
-.topbar h1 { margin: 0; font-size: 26px; }
-.topbar p { margin: 6px 0 0; opacity: .8; }
-.topbar button.secondary { color: var(--text); }
-.container {
-  max-width: var(--content-width);
-  padding: 22px;
-  margin: auto;
-}
-.tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 20px;
-}
-.tabs button { background: #e4e9f5; color: #26334b; }
-.tabs button.active { background: var(--primary); color: white; }
-.panel {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 20px;
-  margin-bottom: 20px;
-  min-width: 0;
-}
-.panel h2, .panel h3 { margin-top: 0; }
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 16px;
-}
-.stat {
-  padding: 20px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--card);
-}
-.stat strong { display: block; font-size: 26px; margin-top: 10px; }
-.toolbar {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: center;
-  margin: 12px 0;
-}
-.toolbar input { flex: 1; min-width: 180px; }
-.table-wrap {
-  overflow: auto;
-  max-width: 100%;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-table {
-  border-collapse: collapse;
-  width: 100%;
-  background: var(--card);
-  white-space: nowrap;
-}
-th, td {
-  text-align: left;
-  padding: 11px 12px;
-  border-bottom: 1px solid var(--border);
-}
-th { background: var(--header); color: white; }
-tr:last-child td { border-bottom: 0; }
-td[contenteditable="true"]:focus {
-  outline: 2px solid var(--primary);
-  outline-offset: -2px;
-}
-.actions { display: flex; gap: 6px; }
-.actions button { padding: 6px 9px; }
-.design-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 15px;
-}
-.color-field {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.color-field input[type="color"] {
-  width: 52px;
-  height: 40px;
-  padding: 3px;
-}
-.check-field { display: flex; gap: 10px; align-items: center; }
-.check-field input { width: auto; }
-.status { margin: 10px 0; min-height: 20px; }
-.status.error { color: #c53c4a; }
-.status.success { color: #17804a; }
-.hidden { display: none !important; }
-.footer { text-align: center; padding: 24px; color: var(--muted); }
-@media(max-width:600px) {
-  .container { padding: 12px; }
-  .panel { padding: 14px; }
-  .topbar h1 { font-size: 22px; }
+@media print{
+ body{background:#fff;color:#000;font-size:10pt}
+ body *{visibility:hidden!important}
+ #stockPrintArea,#stockPrintArea *{visibility:visible!important}
+ #stockPrintArea{display:block!important;position:absolute;left:0;top:0;width:100%;
+  padding:0;color:#000;background:#fff}
+ #stockPrintHeader{display:block!important;margin-bottom:18px}
+ #stockPrintArea table{width:100%;border-collapse:collapse}
+ #stockPrintArea th,#stockPrintArea td{background:#fff!important;color:#000!important;
+  border:1px solid #888;padding:6px}
+ #stockPrintArea h1{font-size:20pt}
+ #stockPrintArea h2{font-size:14pt}
+ .no-print{display:none!important}
+ @page{size:A4 portrait;margin:15mm}
 }
 </style>
 </head>
-
 <body>
 
 <section id="login">
-  <h1 id="loginTitle">Stock Fitin</h1>
-  <p id="loginSubtitle" class="muted">Gestión de registros · Turboflit</p>
-  <form id="loginForm">
-    <div class="field">
-      <label for="email">Correo electrónico</label>
-      <input id="email" type="email" autocomplete="username" required>
-    </div>
-    <div class="field">
-      <label for="password">Contraseña</label>
-      <input id="password" type="password" autocomplete="current-password" required>
-    </div>
-    <button type="submit" style="width:100%">Iniciar sesión</button>
-  </form>
-  <p id="loginStatus" class="status" role="status"></p>
-  <small>El acceso requiere un usuario habilitado en Supabase.</small>
+ <h1 id="loginTitle">FITIN CAMPO</h1>
+ <p id="loginSubtitle" class="muted">Gestión de productos y stock</p>
+ <form id="loginForm">
+  <label for="email">Correo electrónico</label>
+  <input id="email" type="email" autocomplete="username" required>
+  <label for="password">Contraseña</label>
+  <input id="password" type="password" autocomplete="current-password" required>
+  <button style="width:100%;margin-top:16px">Iniciar sesión</button>
+ </form>
+ <p id="loginStatus" class="status" role="status"></p>
+ <small>Ingresá con un usuario habilitado en Supabase.</small>
 </section>
 
 <section id="app">
-  <header class="topbar">
-    <div class="topbar-inner">
-      <div>
-        <h1 id="pageTitle">Stock Fitin</h1>
-        <p id="pageSubtitle">Gestión de registros · Turboflit</p>
-      </div>
-      <div class="toolbar">
-        <span id="userEmail"></span>
-        <button class="secondary" id="logoutBtn">Cerrar sesión</button>
-      </div>
+<header>
+ <div class="header-inner">
+  <div>
+   <h1 id="pageTitle">FITIN CAMPO</h1>
+   <p id="pageSubtitle">Gestión de productos y stock</p>
+  </div>
+  <div class="toolbar">
+   <span id="userEmail"></span>
+   <button class="secondary" id="logoutBtn">Cerrar sesión</button>
+  </div>
+ </div>
+</header>
+
+<main class="container">
+ <nav id="tabs" class="tabs"></nav>
+
+ <section id="dashboardTab">
+  <div class="panel">
+   <h2 id="dashboardHeading">Panel principal</h2>
+   <p id="dashboardDescription" class="muted">Resumen de los registros.</p>
+   <div id="defaultStats" class="grid"></div>
+  </div>
+  <div id="dashboardWidgets" class="widget-grid"></div>
+ </section>
+
+ <section id="recordsTab" class="hidden">
+  <div class="panel">
+   <h2 id="recordsHeading">Registros</h2>
+   <p id="recordsDescription" class="muted">Importá y administrá los datos.</p>
+   <div class="toolbar">
+    <label for="sheetSelect">Hoja:</label>
+    <select id="sheetSelect" style="max-width:250px"></select>
+    <button id="newSheetBtn" class="secondary">Nueva hoja</button>
+    <button id="renameSheetBtn" class="secondary">Renombrar hoja</button>
+    <button id="deleteSheetBtn" class="danger">Eliminar hoja</button>
+   </div>
+   <div class="toolbar">
+    <input id="searchInput" placeholder="Buscar registros...">
+    <button id="addRowBtn">Agregar fila</button>
+    <button id="addColumnBtn" class="secondary">Agregar columna</button>
+   </div>
+   <div class="toolbar">
+    <button id="importBtn">Importar Excel</button>
+    <button id="exportBtn" class="secondary">Exportar Excel</button>
+    <button id="saveRecordsBtn">Guardar registros</button>
+    <input id="excelFile" type="file" accept=".xlsx,.xls,.csv" class="hidden">
+   </div>
+   <p id="recordsStatus" class="status" role="status"></p>
+   <div id="recordsTable" class="table-wrap"></div>
+  </div>
+ </section>
+
+ <section id="stockTab" class="hidden">
+  <div id="stockPrintArea">
+   <div id="stockPrintHeader">
+    <h1 id="printCompany">FITIN CAMPO</h1>
+    <h2 id="printTitle">Stock actual</h2>
+    <p id="printDate"></p>
+   </div>
+   <div class="panel no-print">
+    <h2 id="stockHeading">Stock actual</h2>
+    <p class="muted">Consolidado por código y producto, sumando las cantidades de los registros.</p>
+    <div class="design-grid">
+     <div><label for="stockSheetSelect">Hoja de origen</label><select id="stockSheetSelect"></select></div>
+     <div><label for="stockProductCol">Columna: producto</label><select id="stockProductCol"></select></div>
+     <div><label for="stockCodeCol">Columna: código</label><select id="stockCodeCol"></select></div>
+     <div><label for="stockQtyCol">Columna: cantidad</label><select id="stockQtyCol"></select></div>
     </div>
-  </header>
+    <div class="toolbar">
+     <button id="refreshStockBtn">Actualizar stock</button>
+     <button id="printStockBtn">Imprimir / Guardar PDF</button>
+    </div>
+    <p id="stockStatus" class="status" role="status"></p>
+   </div>
+   <div class="panel">
+    <div class="grid no-print" id="stockStats"></div>
+    <h2 class="no-print">Listado consolidado</h2>
+    <p class="no-print muted">La cantidad total suma todos los registros con el mismo código y producto.</p>
+    <div id="stockTable" class="table-wrap"></div>
+   </div>
+  </div>
+ </section>
 
-  <main class="container">
-    <nav class="tabs">
-      <button class="active" data-tab="dashboard">Inicio</button>
-      <button data-tab="records">Registros</button>
-      <button data-tab="design">Diseño de página</button>
-    </nav>
+ <section id="designTab" class="hidden">
+  <div class="panel">
+   <h2>Editor de diseño y pestañas</h2>
+   <p class="muted">Los cambios se guardan en Supabase. La estructura de paneles y pestañas se comparte entre usuarios.</p>
 
-    <section id="dashboardTab">
-      <div class="panel">
-        <h2 id="dashboardTitle">Panel principal</h2>
-        <p id="dashboardDescription" class="muted">Resumen de tus registros.</p>
-        <div class="grid" id="stats"></div>
-      </div>
-      <div class="panel">
-        <h3>Datos disponibles</h3>
-        <p id="summaryText"></p>
-        <button id="goRecords">Ver registros</button>
-      </div>
-    </section>
+   <h3>1. Títulos de las pestañas</h3>
+   <p class="muted">Podés cambiar el texto visible de cada pestaña.</p>
+   <div id="tabTitleEditor"></div>
+   <div class="toolbar">
+    <button id="saveTabTitlesBtn">Guardar títulos</button>
+    <button id="addTabBtn">Crear pestaña nueva</button>
+   </div>
 
-    <section id="recordsTab" class="hidden">
-      <div class="panel">
-        <h2 id="recordsTitle">Registros</h2>
-        <p id="recordsDescription" class="muted">Importá, agregá y editá información.</p>
-        <div class="toolbar">
-          <label for="sheetSelect">Tabla:</label>
-          <select id="sheetSelect" style="max-width:260px"></select>
-          <button id="newSheetBtn" class="secondary">Nueva tabla</button>
-          <button id="renameSheetBtn" class="secondary">Renombrar tabla</button>
-          <button id="deleteSheetBtn" class="danger">Eliminar tabla</button>
-        </div>
-        <div class="toolbar">
-          <input id="searchInput" placeholder="Buscar en los registros...">
-          <button id="addRowBtn">Agregar fila</button>
-          <button id="addColumnBtn" class="secondary">Agregar columna</button>
-        </div>
-        <div class="toolbar">
-          <button id="importBtn">Importar Excel</button>
-          <button id="exportBtn" class="secondary">Exportar Excel</button>
-          <button id="saveBtn">Guardar cambios</button>
-          <input id="excelFile" type="file" accept=".xlsx,.xls,.csv" class="hidden">
-        </div>
-        <p id="recordStatus" class="status" role="status"></p>
-        <div id="tableArea" class="table-wrap"></div>
-        <p class="muted">Podés editar las celdas directamente. Los cambios se guardan al presionar “Guardar cambios”.</p>
-      </div>
-    </section>
+   <hr>
+   <h3>2. Agregar y configurar paneles</h3>
+   <p>Los paneles pueden mostrar indicadores, tablas de datos o gráficos de barras y torta.</p>
+   <div class="toolbar">
+    <button id="addWidgetBtn">+ Agregar panel</button>
+   </div>
+   <div id="widgetEditor"></div>
 
-    <section id="designTab" class="hidden">
-      <div class="panel">
-        <h2>Editor completo de diseño</h2>
-        <p class="muted">Modificá el aspecto de la página y guardá el diseño para compartirlo con los usuarios autorizados.</p>
+   <hr>
+   <h3>3. Títulos y textos generales</h3>
+   <div class="design-grid">
+    <div><label for="dTitle">Título principal</label><input id="dTitle"></div>
+    <div><label for="dSubtitle">Subtítulo</label><input id="dSubtitle"></div>
+    <div><label for="dLoginTitle">Título del acceso</label><input id="dLoginTitle"></div>
+    <div><label for="dLoginSubtitle">Texto del acceso</label><input id="dLoginSubtitle"></div>
+    <div><label for="dDashboardHeading">Título del inicio</label><input id="dDashboardHeading"></div>
+    <div><label for="dRecordsHeading">Título de registros</label><input id="dRecordsHeading"></div>
+    <div><label for="dStockHeading">Título del stock actual</label><input id="dStockHeading"></div>
+   </div>
 
-        <h3>1. Títulos y textos</h3>
-        <div class="design-grid">
-          <div><label for="dTitle">Título principal</label><input id="dTitle"></div>
-          <div><label for="dSubtitle">Subtítulo</label><input id="dSubtitle"></div>
-          <div><label for="dLoginTitle">Título de inicio de sesión</label><input id="dLoginTitle"></div>
-          <div><label for="dLoginSubtitle">Texto de inicio de sesión</label><input id="dLoginSubtitle"></div>
-          <div><label for="dDashboardTitle">Título del panel</label><input id="dDashboardTitle"></div>
-          <div><label for="dDashboardDescription">Descripción del panel</label><input id="dDashboardDescription"></div>
-          <div><label for="dRecordsTitle">Título de registros</label><input id="dRecordsTitle"></div>
-          <div><label for="dRecordsDescription">Descripción de registros</label><input id="dRecordsDescription"></div>
-        </div>
+   <hr>
+   <h3>4. Colores</h3>
+   <div id="colorControls" class="design-grid"></div>
 
-        <hr style="border:0;border-top:1px solid var(--border);margin:24px 0">
-        <h3>2. Colores</h3>
-        <div class="design-grid" id="colorControls"></div>
+   <hr>
+   <h3>5. Tipografía y formato</h3>
+   <div class="design-grid">
+    <div><label for="dFont">Fuente</label>
+     <select id="dFont">
+      <option value="Arial,sans-serif">Arial</option>
+      <option value="'Segoe UI',sans-serif">Segoe UI</option>
+      <option value="Verdana,sans-serif">Verdana</option>
+      <option value="Tahoma,sans-serif">Tahoma</option>
+      <option value="Georgia,serif">Georgia</option>
+      <option value="'Trebuchet MS',sans-serif">Trebuchet MS</option>
+     </select>
+    </div>
+    <div><label for="dFontSize">Tamaño del texto (px)</label><input id="dFontSize" type="number" min="11" max="24"></div>
+    <div><label for="dTitleSize">Tamaño del título (px)</label><input id="dTitleSize" type="number" min="18" max="48"></div>
+    <div><label for="dWidth">Ancho máximo (px)</label><input id="dWidth" type="number" min="700" max="2200" step="50"></div>
+    <div><label for="dRadius">Redondeo (px)</label><input id="dRadius" type="number" min="0" max="40"></div>
+    <div><label for="dGap">Separación entre paneles (px)</label><input id="dGap" type="number" min="4" max="40"></div>
+   </div>
+   <div class="toolbar">
+    <button id="previewDesignBtn" class="secondary">Vista previa</button>
+    <button id="saveDesignBtn">Guardar diseño completo</button>
+    <button id="resetDesignBtn" class="secondary">Restablecer diseño</button>
+   </div>
+   <p id="designStatus" class="status" role="status"></p>
+  </div>
+ </section>
 
-        <hr style="border:0;border-top:1px solid var(--border);margin:24px 0">
-        <h3>3. Tipografía y tamaños</h3>
-        <div class="design-grid">
-          <div>
-            <label for="dFont">Familia tipográfica</label>
-            <select id="dFont">
-              <option value="Arial, sans-serif">Arial</option>
-              <option value="'Segoe UI', sans-serif">Segoe UI</option>
-              <option value="Verdana, sans-serif">Verdana</option>
-              <option value="Tahoma, sans-serif">Tahoma</option>
-              <option value="Georgia, serif">Georgia</option>
-              <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
-              <option value="'Courier New', monospace">Courier New</option>
-            </select>
-          </div>
-          <div><label for="dFontSize">Tamaño del texto (px)</label><input id="dFontSize" type="number" min="11" max="24"></div>
-          <div><label for="dTitleSize">Tamaño del título (px)</label><input id="dTitleSize" type="number" min="18" max="48"></div>
-          <div><label for="dContentWidth">Ancho máximo (px)</label><input id="dContentWidth" type="number" min="700" max="2200" step="50"></div>
-        </div>
-
-        <hr style="border:0;border-top:1px solid var(--border);margin:24px 0">
-        <h3>4. Formato de paneles y botones</h3>
-        <div class="design-grid">
-          <div><label for="dRadius">Redondeo de esquinas (px)</label><input id="dRadius" type="number" min="0" max="40"></div>
-          <div><label for="dShadow">Intensidad de sombra</label><input id="dShadow" type="range" min="0" max="30"></div>
-          <div><label for="dGap">Separación entre bloques (px)</label><input id="dGap" type="number" min="4" max="40"></div>
-        </div>
-
-        <hr style="border:0;border-top:1px solid var(--border);margin:24px 0">
-        <h3>5. Elementos visibles</h3>
-        <div class="design-grid">
-          <label class="check-field"><input id="dShowStats" type="checkbox"> Mostrar indicadores del panel</label>
-          <label class="check-field"><input id="dShowDescription" type="checkbox"> Mostrar descripciones</label>
-          <label class="check-field"><input id="dShowFooter" type="checkbox"> Mostrar pie de página</label>
-        </div>
-
-        <div class="toolbar" style="margin-top:24px">
-          <button id="applyDesignBtn">Aplicar vista previa</button>
-          <button id="saveDesignBtn">Guardar diseño en Supabase</button>
-          <button id="resetDesignBtn" class="secondary">Restablecer diseño</button>
-        </div>
-        <p id="designStatus" class="status" role="status"></p>
-      </div>
-    </section>
-  </main>
-
-  <footer id="footer" class="footer">Stock Fitin · Turboflit</footer>
+ <section id="customTab" class="hidden">
+  <div class="panel">
+   <div class="toolbar">
+    <h2 id="customHeading" style="margin:0;flex:1">Pestaña</h2>
+    <button id="renameCurrentTabBtn" class="secondary">Renombrar</button>
+    <button id="deleteCurrentTabBtn" class="danger">Eliminar pestaña</button>
+   </div>
+   <div id="customWidgets" class="widget-grid"></div>
+   <p class="muted">Para agregar contenido, usá Diseño de página → Agregar panel y seleccioná esta pestaña como destino.</p>
+  </div>
+ </section>
+</main>
+<footer id="footer">FITIN CAMPO · Gestión de stock</footer>
 </section>
 
 <script>
 "use strict";
 
-/* CONFIGURACIÓN DE SUPABASE */
-const SUPABASE_URL = "https://jgyeckanfjrqdfvinoaj.supabase.co";
-const SUPABASE_KEY = "sb_publishable_lLv-CsOrjj-weMWJgM2QHw_LNaiA4SW";
+/* CONFIGURACIÓN */
+const SUPABASE_URL="https://jgyeckanfjrqdfvinoaj.supabase.co";
+const SUPABASE_KEY="sb_publishable_lLv-CsOrjj-weMWJgM2QHw_LNaiA4SW";
+const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-const DEFAULT_DESIGN = {
-  title: "Stock Fitin",
-  subtitle: "Gestión de registros · Turboflit",
-  loginTitle: "Stock Fitin",
-  loginSubtitle: "Gestión de registros · Turboflit",
-  dashboardTitle: "Panel principal",
-  dashboardDescription: "Resumen de tus registros.",
-  recordsTitle: "Registros",
-  recordsDescription: "Importá, agregá y editá información.",
-  primary: "#3157d5",
-  header: "#18243a",
-  bg: "#f3f5fa",
-  card: "#ffffff",
-  text: "#202b3c",
-  muted: "#6b7280",
-  border: "#dfe4ed",
-  font: "Arial, sans-serif",
-  fontSize: 14,
-  titleSize: 26,
-  contentWidth: 1500,
-  radius: 14,
-  shadow: 7,
-  gap: 16,
-  showStats: true,
-  showDescription: true,
-  showFooter: true
+const DEFAULT_DESIGN={
+ title:"FITIN CAMPO",subtitle:"Gestión de productos y stock",
+ loginTitle:"FITIN CAMPO",loginSubtitle:"Gestión de productos y stock",
+ dashboardHeading:"Panel principal",recordsHeading:"Registros",stockHeading:"Stock actual",
+ primary:"#3157d5",header:"#18243a",bg:"#f3f5fa",card:"#ffffff",
+ text:"#202b3c",muted:"#6b7280",border:"#dfe4ed",
+ font:"Arial,sans-serif",fontSize:14,titleSize:28,width:1600,radius:14,gap:16
 };
-
-let currentUser = null;
-let book = {
-  sheets: [{ name: "Registros", rows: [] }],
-  active: 0,
-  design: { ...DEFAULT_DESIGN }
+const DEFAULT_LABELS={
+ dashboard:"Inicio",records:"Registros",stock:"Stock actual",design:"Diseño de página"
 };
-let busy = false;
-
-const $ = id => document.getElementById(id);
-
-function status(id, message, error = false) {
-  const el = $(id);
-  el.textContent = message;
-  el.className = "status " + (error ? "error" : "success");
-}
-
-function clone(value) {
-  return JSON.parse(JSON.stringify(value));
-}
-
-function currentSheet() {
-  return book.sheets[book.active] || book.sheets[0];
-}
-
-function escapeHTML(value) {
-  return String(value ?? "").replace(/[&<>"']/g, ch => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;",
-    '"': "&quot;", "'": "&#39;"
-  }[ch]));
-}
-
-function setTab(tab) {
-  ["dashboard", "records", "design"].forEach(name => {
-    $(name + "Tab").classList.toggle("hidden", name !== tab);
-  });
-  document.querySelectorAll(".tabs button").forEach(button => {
-    button.classList.toggle("active", button.dataset.tab === tab);
-  });
-  if (tab === "records") renderRecords();
-  if (tab === "dashboard") renderDashboard();
-}
-
-document.querySelectorAll(".tabs button").forEach(button => {
-  button.addEventListener("click", () => setTab(button.dataset.tab));
-});
-$("goRecords").addEventListener("click", () => setTab("records"));
-
-/* AUTENTICACIÓN */
-$("loginForm").addEventListener("submit", async event => {
-  event.preventDefault();
-  status("loginStatus", "Iniciando sesión...");
-  const email = $("email").value.trim();
-  const password = $("password").value;
-
-  const { data, error } = await sb.auth.signInWithPassword({ email, password });
-  if (error) {
-    status("loginStatus", "No se pudo iniciar sesión: " + error.message, true);
-    return;
-  }
-  currentUser = data.user;
-  await showApplication();
-});
-
-$("logoutBtn").addEventListener("click", async () => {
-  await sb.auth.signOut();
-  currentUser = null;
-  $("app").style.display = "none";
-  $("login").style.display = "block";
-});
-
-sb.auth.onAuthStateChange((event, session) => {
-  if (session?.user && !currentUser) {
-    currentUser = session.user;
-    setTimeout(() => showApplication(), 0);
-  }
-});
-
-async function showApplication() {
-  if (busy) return;
-  busy = true;
-  $("login").style.display = "none";
-  $("app").style.display = "block";
-  $("userEmail").textContent = currentUser?.email || "";
-  status("recordStatus", "Cargando datos...");
-  try {
-    await loadBook();
-    populateDesignForm();
-    applyDesign();
-    renderAll();
-    status("recordStatus", "Datos cargados.");
-  } catch (error) {
-    status("recordStatus", error.message, true);
-  } finally {
-    busy = false;
-  }
-}
-
-/* CARGA Y GUARDADO DE DATOS */
-async function loadBook() {
-  const { data, error } = await sb
-    .from("app_state")
-    .select("data")
-    .eq("id", 1)
-    .maybeSingle();
-
-  if (error) throw new Error("Error leyendo Supabase: " + error.message);
-
-  if (data?.data && typeof data.data === "object") {
-    const saved = data.data;
-    book = {
-      sheets: Array.isArray(saved.sheets) && saved.sheets.length
-        ? saved.sheets : [{ name: "Registros", rows: [] }],
-      active: Number.isInteger(saved.active) ? saved.active : 0,
-      design: { ...DEFAULT_DESIGN, ...(saved.design || {}) }
-    };
-  } else {
-    book = {
-      sheets: [{ name: "Registros", rows: [] }],
-      active: 0,
-      design: { ...DEFAULT_DESIGN }
-    };
-  }
-
-  if (book.active < 0 || book.active >= book.sheets.length) book.active = 0;
-  book.sheets.forEach(sheet => {
-    if (!Array.isArray(sheet.rows)) sheet.rows = [];
-    if (!sheet.name) sheet.name = "Registros";
-  });
-}
-
-async function saveBook(successMessage = "Cambios guardados en Supabase.") {
-  if (!currentUser) {
-    throw new Error("Iniciá sesión para guardar los cambios.");
-  }
-
-  const payload = {
-    id: 1,
-    data: book,
-    updated_by: currentUser.id,
-    updated_at: new Date().toISOString()
-  };
-
-  const { error } = await sb
-    .from("app_state")
-    .upsert(payload, { onConflict: "id" });
-
-  if (error) throw new Error("No se pudo guardar: " + error.message);
-  status("recordStatus", successMessage);
-}
-
-/* TABLAS Y REGISTROS */
-function getColumns(rows) {
-  const columns = [];
-  rows.forEach(row => {
-    Object.keys(row || {}).forEach(key => {
-      if (!columns.includes(key)) columns.push(key);
-    });
-  });
-  return columns;
-}
-
-function renderAll() {
-  renderSheetSelect();
-  renderRecords();
-  renderDashboard();
-}
-
-function renderSheetSelect() {
-  const select = $("sheetSelect");
-  select.innerHTML = "";
-  book.sheets.forEach((sheet, index) => {
-    const option = document.createElement("option");
-    option.value = index;
-    option.textContent = sheet.name;
-    select.appendChild(option);
-  });
-  select.value = String(book.active);
-}
-
-$("sheetSelect").addEventListener("change", () => {
-  book.active = Number($("sheetSelect").value);
-  renderRecords();
-  renderDashboard();
-});
-
-function renderRecords() {
-  if (!book.sheets.length) {
-    book.sheets = [{ name: "Registros", rows: [] }];
-    book.active = 0;
-  }
-  renderSheetSelect();
-
-  const sheet = currentSheet();
-  const columns = getColumns(sheet.rows);
-  const query = $("searchInput").value.trim().toLowerCase();
-  const filtered = sheet.rows
-    .map((row, index) => ({ row, index }))
-    .filter(item => !query || Object.values(item.row).some(value =>
-      String(value ?? "").toLowerCase().includes(query)
-    ));
-
-  if (!columns.length) {
-    $("tableArea").innerHTML =
-      '<div style="padding:20px">Esta tabla está vacía. Importá un Excel o agregá una columna y una fila.</div>';
-    return;
-  }
-
-  let html = "<table><thead><tr>";
-  columns.forEach(col => html += "<th>" + escapeHTML(col) + "</th>");
-  html += "<th>Acciones</th></tr></thead><tbody>";
-
-  filtered.forEach(item => {
-    html += "<tr>";
-    columns.forEach(col => {
-      html += '<td contenteditable="true" data-row="' + item.index +
-        '" data-col="' + escapeHTML(col) + '">' +
-        escapeHTML(item.row[col] ?? "") + "</td>";
-    });
-    html += '<td><div class="actions"><button class="danger" data-delete="' +
-      item.index + '">Eliminar</button></div></td></tr>';
-  });
-
-  html += "</tbody></table>";
-  $("tableArea").innerHTML = html;
-
-  $("tableArea").querySelectorAll("td[contenteditable]").forEach(cell => {
-    cell.addEventListener("blur", () => {
-      const rowIndex = Number(cell.dataset.row);
-      const column = cell.dataset.col;
-      sheet.rows[rowIndex][column] = cell.textContent.trim();
-    });
-    cell.addEventListener("keydown", event => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        cell.blur();
-      }
-    });
-  });
-
-  $("tableArea").querySelectorAll("[data-delete]").forEach(button => {
-    button.addEventListener("click", () => {
-      const index = Number(button.dataset.delete);
-      if (!confirm("¿Eliminar esta fila?")) return;
-      sheet.rows.splice(index, 1);
-      renderRecords();
-      renderDashboard();
-    });
-  });
-}
-
-$("searchInput").addEventListener("input", renderRecords);
-
-$("addRowBtn").addEventListener("click", () => {
-  const sheet = currentSheet();
-  let columns = getColumns(sheet.rows);
-  if (!columns.length) {
-    const firstColumn = prompt("Nombre de la primera columna:", "Nombre");
-    if (!firstColumn) return;
-    columns = [firstColumn.trim()];
-  }
-  const row = {};
-  columns.forEach(column => row[column] = "");
-  sheet.rows.push(row);
-  renderRecords();
-  renderDashboard();
-});
-
-$("addColumnBtn").addEventListener("click", () => {
-  const name = prompt("Nombre de la nueva columna:");
-  if (!name?.trim()) return;
-  const column = name.trim();
-  const sheet = currentSheet();
-  if (getColumns(sheet.rows).includes(column)) {
-    alert("Esa columna ya existe.");
-    return;
-  }
-  sheet.rows.forEach(row => row[column] = "");
-  if (!sheet.rows.length) sheet.rows.push({ [column]: "" });
-  renderRecords();
-});
-
-$("newSheetBtn").addEventListener("click", () => {
-  const name = prompt("Nombre de la nueva tabla:");
-  if (!name?.trim()) return;
-  book.sheets.push({ name: name.trim(), rows: [] });
-  book.active = book.sheets.length - 1;
-  renderAll();
-});
-
-$("renameSheetBtn").addEventListener("click", () => {
-  const name = prompt("Nuevo nombre de la tabla:", currentSheet().name);
-  if (!name?.trim()) return;
-  currentSheet().name = name.trim();
-  renderSheetSelect();
-});
-
-$("deleteSheetBtn").addEventListener("click", () => {
-  if (book.sheets.length === 1) {
-    alert("Debe quedar al menos una tabla.");
-    return;
-  }
-  if (!confirm("¿Eliminar la tabla y todos sus registros?")) return;
-  book.sheets.splice(book.active, 1);
-  book.active = 0;
-  renderAll();
-});
-
-$("saveBtn").addEventListener("click", async () => {
-  try {
-    status("recordStatus", "Guardando...");
-    await saveBook();
-    renderDashboard();
-  } catch (error) {
-    status("recordStatus", error.message, true);
-  }
-});
-
-/* IMPORTACIÓN Y EXPORTACIÓN EXCEL */
-$("importBtn").addEventListener("click", () => $("excelFile").click());
-
-$("excelFile").addEventListener("change", async event => {
-  const file = event.target.files[0];
-  if (!file) return;
-
-  try {
-    if (!window.XLSX) throw new Error("No se pudo cargar la librería de Excel.");
-    const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: "array" });
-    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(firstSheet, {
-      defval: "", raw: false
-    });
-
-    const name = file.name.replace(/\.(xlsx|xls|csv)$/i, "");
-    const existing = book.sheets.findIndex(sheet => sheet.name === name);
-    if (existing >= 0) {
-      if (!confirm("Ya existe una tabla con ese nombre. ¿Reemplazarla?")) return;
-      book.sheets[existing].rows = rows;
-      book.active = existing;
-    } else {
-      book.sheets.push({ name, rows });
-      book.active = book.sheets.length - 1;
-    }
-
-    renderAll();
-    status("recordStatus", "Excel importado. Presioná Guardar cambios para conservarlo.");
-  } catch (error) {
-    status("recordStatus", error.message, true);
-  } finally {
-    event.target.value = "";
-  }
-});
-
-$("exportBtn").addEventListener("click", () => {
-  if (!window.XLSX) {
-    status("recordStatus", "No se pudo cargar la librería de Excel.", true);
-    return;
-  }
-  const sheet = currentSheet();
-  const ws = XLSX.utils.json_to_sheet(sheet.rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, sheet.name.slice(0, 31) || "Registros");
-  XLSX.writeFile(wb, (sheet.name || "registros") + ".xlsx");
-});
-
-/* EDITOR DE DISEÑO */
-const colorFields = [
-  ["primary", "Botones y color principal"],
-  ["header", "Encabezado y encabezados de tabla"],
-  ["bg", "Fondo de la página"],
-  ["card", "Fondo de paneles y campos"],
-  ["text", "Texto principal"],
-  ["muted", "Texto secundario"],
-  ["border", "Bordes y separadores"]
+const COLORS=[
+ ["primary","Botones y color principal"],["header","Encabezado y tabla"],
+ ["bg","Fondo de página"],["card","Fondo de paneles"],
+ ["text","Texto principal"],["muted","Texto secundario"],["border","Bordes"]
 ];
 
-function buildColorControls() {
-  $("colorControls").innerHTML = "";
-  colorFields.forEach(([key, labelText]) => {
-    const wrapper = document.createElement("div");
-    const label = document.createElement("label");
-    label.textContent = labelText;
-    const row = document.createElement("div");
-    row.className = "color-field";
-    const picker = document.createElement("input");
-    picker.type = "color";
-    picker.id = "color_" + key;
-    const textInput = document.createElement("input");
-    textInput.id = "hex_" + key;
-    textInput.placeholder = "#ffffff";
-    textInput.maxLength = 7;
+let currentUser=null,busy=false,activeTab="dashboard";
+let book={
+ sheets:[{name:"Registros",rows:[]}],active:0,
+ design:{...DEFAULT_DESIGN},tabLabels:{...DEFAULT_LABELS},
+ customTabs:[],widgets:[],stockConfig:{sheet:0,product:"",code:"",qty:""}
+};
+const $=id=>document.getElementById(id);
+const deepCopy=x=>JSON.parse(JSON.stringify(x));
+function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function message(id,text,error=false){$(id).textContent=text;$(id).className="status "+(error?"error":"success");}
+function sheet(){return book.sheets[book.active]||book.sheets[0];}
+function columns(rows){const a=[];rows.forEach(r=>Object.keys(r||{}).forEach(k=>{if(!a.includes(k))a.push(k)}));return a;}
+function uid(){return "w"+Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+function localDate(){return new Intl.DateTimeFormat("es-AR",{day:"2-digit",month:"2-digit",year:"numeric"}).format(new Date());}
 
-    picker.addEventListener("input", () => {
-      textInput.value = picker.value;
-      previewDesignFromForm();
-    });
-    textInput.addEventListener("change", () => {
-      if (/^#[0-9a-fA-F]{6}$/.test(textInput.value)) {
-        picker.value = textInput.value;
-        previewDesignFromForm();
-      }
-    });
+/* LOGIN */
+$("loginForm").addEventListener("submit",async e=>{
+ e.preventDefault();message("loginStatus","Ingresando...");
+ const {data,error}=await sb.auth.signInWithPassword({
+  email:$("email").value.trim(),password:$("password").value
+ });
+ if(error){message("loginStatus","No se pudo ingresar: "+error.message,true);return;}
+ currentUser=data.user;await startApp();
+});
+$("logoutBtn").onclick=async()=>{
+ await sb.auth.signOut();currentUser=null;
+ $("app").style.display="none";$("login").style.display="block";
+};
+sb.auth.onAuthStateChange((event,session)=>{
+ if(session?.user&&!currentUser){currentUser=session.user;setTimeout(startApp,0);}
+});
 
-    row.append(picker, textInput);
-    wrapper.append(label, row);
-    $("colorControls").appendChild(wrapper);
-  });
+/* SUPABASE: mantiene el objeto JSON de la aplicación */
+async function loadBook(){
+ const {data,error}=await sb.from("app_state").select("data").eq("id",1).maybeSingle();
+ if(error)throw new Error("Error leyendo Supabase: "+error.message);
+ if(data?.data&&typeof data.data==="object"){
+  const s=data.data;
+  book={
+   sheets:Array.isArray(s.sheets)&&s.sheets.length?s.sheets:[{name:"Registros",rows:[]}],
+   active:Number.isInteger(s.active)?s.active:0,
+   design:{...DEFAULT_DESIGN,...(s.design||{})},
+   tabLabels:{...DEFAULT_LABELS,...(s.tabLabels||{})},
+   customTabs:Array.isArray(s.customTabs)?s.customTabs:[],
+   widgets:Array.isArray(s.widgets)?s.widgets:[],
+   stockConfig:{sheet:0,product:"",code:"",qty:"",...(s.stockConfig||{})}
+  };
+ }else{
+  book={sheets:[{name:"Registros",rows:[]}],active:0,
+   design:{...DEFAULT_DESIGN},tabLabels:{...DEFAULT_LABELS},
+   customTabs:[],widgets:[],stockConfig:{sheet:0,product:"",code:"",qty:""}};
+ }
+ if(book.active<0||book.active>=book.sheets.length)book.active=0;
+ book.sheets.forEach(s=>{if(!Array.isArray(s.rows))s.rows=[];if(!s.name)s.name="Registros";});
+}
+async function saveBook(){
+ if(!currentUser)throw new Error("Iniciá sesión primero.");
+ const {error}=await sb.from("app_state").upsert({
+  id:1,data:book,updated_by:currentUser.id,updated_at:new Date().toISOString()
+ },{onConflict:"id"});
+ if(error)throw new Error("Error al guardar: "+error.message);
+}
+async function startApp(){
+ if(busy)return;busy=true;
+ $("login").style.display="none";$("app").style.display="block";
+ $("userEmail").textContent=currentUser?.email||"";
+ try{
+  await loadBook();
+  populateDesign();renderAll();applyDesign();renderTabs();
+  showTab("dashboard");
+ }catch(e){alert(e.message);}
+ finally{busy=false;}
 }
 
-buildColorControls();
-
-function populateDesignForm() {
-  const d = { ...DEFAULT_DESIGN, ...book.design };
-  const mapping = {
-    dTitle: "title",
-    dSubtitle: "subtitle",
-    dLoginTitle: "loginTitle",
-    dLoginSubtitle: "loginSubtitle",
-    dDashboardTitle: "dashboardTitle",
-    dDashboardDescription: "dashboardDescription",
-    dRecordsTitle: "recordsTitle",
-    dRecordsDescription: "recordsDescription",
-    dFont: "font",
-    dFontSize: "fontSize",
-    dTitleSize: "titleSize",
-    dContentWidth: "contentWidth",
-    dRadius: "radius",
-    dShadow: "shadow",
-    dGap: "gap",
-    dShowStats: "showStats",
-    dShowDescription: "showDescription",
-    dShowFooter: "showFooter"
-  };
-
-  Object.entries(mapping).forEach(([elementId, key]) => {
-    const el = $(elementId);
-    if (el.type === "checkbox") el.checked = Boolean(d[key]);
-    else el.value = d[key] ?? "";
-  });
-
-  colorFields.forEach(([key]) => {
-    $("color_" + key).value = d[key];
-    $("hex_" + key).value = d[key];
-  });
+/* TABS: base + pestañas creadas por el usuario */
+function allTabs(){
+ return [
+  {id:"dashboard",label:book.tabLabels.dashboard||"Inicio",fixed:true},
+  {id:"records",label:book.tabLabels.records||"Registros",fixed:true},
+  {id:"stock",label:book.tabLabels.stock||"Stock actual",fixed:true},
+  ...book.customTabs.map(t=>({...t,fixed:false})),
+  {id:"design",label:book.tabLabels.design||"Diseño de página",fixed:true}
+ ];
+}
+function renderTabs(){
+ $("tabs").innerHTML="";
+ allTabs().forEach(t=>{
+  const b=document.createElement("button");
+  b.textContent=t.label;b.className=t.id===activeTab?"active":"";
+  b.onclick=()=>showTab(t.id);$("tabs").appendChild(b);
+ });
+}
+function showTab(id){
+ activeTab=id;
+ ["dashboardTab","recordsTab","stockTab","designTab","customTab"].forEach(x=>$(x).classList.add("hidden"));
+ if(["dashboard","records","stock","design"].includes(id))$(id+"Tab").classList.remove("hidden");
+ else{
+  $("customTab").classList.remove("hidden");
+  const t=book.customTabs.find(x=>x.id===id);
+  $("customHeading").textContent=t?.label||"Pestaña";
+  $("renameCurrentTabBtn").classList.remove("hidden");
+  $("deleteCurrentTabBtn").classList.remove("hidden");
+  renderWidgetsInto("customWidgets",id);
+ }
+ renderTabs();
+ if(id==="records")renderRecords();
+ if(id==="dashboard"){renderDashboard();renderWidgetsInto("dashboardWidgets","dashboard");}
+ if(id==="stock"){setupStockControls();renderStock();}
+ if(id==="design"){renderTabTitleEditor();renderWidgetEditor();}
 }
 
-function readDesignForm() {
-  const d = { ...DEFAULT_DESIGN };
-  const mapping = {
-    dTitle: "title",
-    dSubtitle: "subtitle",
-    dLoginTitle: "loginTitle",
-    dLoginSubtitle: "loginSubtitle",
-    dDashboardTitle: "dashboardTitle",
-    dDashboardDescription: "dashboardDescription",
-    dRecordsTitle: "recordsTitle",
-    dRecordsDescription: "recordsDescription",
-    dFont: "font",
-    dFontSize: "fontSize",
-    dTitleSize: "titleSize",
-    dContentWidth: "contentWidth",
-    dRadius: "radius",
-    dShadow: "shadow",
-    dGap: "gap"
-  };
+/* REGISTROS */
+function renderAll(){
+ renderSheetSelect();renderRecords();renderDashboard();setupStockControls();
+}
+function renderSheetSelect(){
+ const sel=$("sheetSelect");sel.innerHTML="";
+ book.sheets.forEach((s,i)=>{const o=document.createElement("option");o.value=i;o.textContent=s.name;sel.appendChild(o);});
+ sel.value=String(book.active);
+}
+$("sheetSelect").onchange=()=>{book.active=Number($("sheetSelect").value);renderRecords();renderDashboard();};
+function renderRecords(){
+ const s=sheet(),cols=columns(s.rows),q=$("searchInput").value.trim().toLowerCase();
+ const rows=s.rows.map((r,i)=>({r,i})).filter(x=>!q||Object.values(x.r).some(v=>String(v??"").toLowerCase().includes(q)));
+ if(!cols.length){$("recordsTable").innerHTML="<p style='padding:14px'>La hoja está vacía. Importá Excel o agregá una columna.</p>";return;}
+ let h="<table><thead><tr>"+cols.map(c=>"<th>"+esc(c)+"</th>").join("")+"<th>Acciones</th></tr></thead><tbody>";
+ rows.forEach(x=>{
+  h+="<tr>"+cols.map(c=>'<td contenteditable="true" data-row="'+x.i+'" data-col="'+esc(c)+'">'+esc(x.r[c]??"")+"</td>").join("");
+  h+='<td><button class="danger" data-del="'+x.i+'">Eliminar</button></td></tr>';
+ });
+ $("recordsTable").innerHTML=h+"</tbody></table>";
+ $("recordsTable").querySelectorAll("[contenteditable]").forEach(td=>{
+  td.onblur=()=>{s.rows[Number(td.dataset.row)][td.dataset.col]=td.textContent.trim();};
+  td.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();td.blur();}};
+ });
+ $("recordsTable").querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{
+  if(confirm("¿Eliminar esta fila?")){s.rows.splice(Number(b.dataset.del),1);renderRecords();renderDashboard();}
+ });
+}
+$("searchInput").oninput=renderRecords;
+$("addRowBtn").onclick=()=>{
+ let c=columns(sheet().rows);
+ if(!c.length){const name=prompt("Nombre de la primera columna:","Producto");if(!name)return;c=[name.trim()];}
+ const row={};c.forEach(k=>row[k]="");sheet().rows.push(row);renderRecords();
+};
+$("addColumnBtn").onclick=()=>{
+ const name=prompt("Nombre de la nueva columna:");if(!name?.trim())return;
+ const c=name.trim();if(columns(sheet().rows).includes(c)){alert("La columna ya existe.");return;}
+ if(!sheet().rows.length)sheet().rows.push({[c]:""});
+ else sheet().rows.forEach(r=>r[c]="");
+ renderRecords();
+};
+$("newSheetBtn").onclick=()=>{
+ const n=prompt("Nombre de la nueva hoja:");if(!n?.trim())return;
+ book.sheets.push({name:n.trim(),rows:[]});book.active=book.sheets.length-1;renderAll();
+};
+$("renameSheetBtn").onclick=()=>{
+ const n=prompt("Nuevo nombre:",sheet().name);if(n?.trim()){sheet().name=n.trim();renderSheetSelect();}
+};
+$("deleteSheetBtn").onclick=()=>{
+ if(book.sheets.length<2){alert("Debe quedar al menos una hoja.");return;}
+ if(confirm("¿Eliminar esta hoja y todos sus registros?")){book.sheets.splice(book.active,1);book.active=0;renderAll();}
+};
+$("saveRecordsBtn").onclick=async()=>{
+ try{message("recordsStatus","Guardando...");await saveBook();message("recordsStatus","Registros guardados.");}
+ catch(e){message("recordsStatus",e.message,true);}
+};
 
-  Object.entries(mapping).forEach(([elementId, key]) => {
-    const el = $(elementId);
-    d[key] = ["font"].includes(key) ? el.value : Number(el.value);
-    if (["title", "subtitle", "loginTitle", "loginSubtitle",
-         "dashboardTitle", "dashboardDescription",
-         "recordsTitle", "recordsDescription"].includes(key)) {
-      d[key] = el.value;
+/* EXCEL */
+$("importBtn").onclick=()=>$("excelFile").click();
+$("excelFile").onchange=async e=>{
+ const f=e.target.files[0];if(!f)return;
+ try{
+  const wb=XLSX.read(await f.arrayBuffer(),{type:"array"});
+  const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:"",raw:false});
+  const name=f.name.replace(/\.(xlsx|xls|csv)$/i,"");
+  let i=book.sheets.findIndex(s=>s.name===name);
+  if(i>=0){if(!confirm("Ya existe esa hoja. ¿Reemplazarla?"))return;book.sheets[i].rows=rows;}
+  else{book.sheets.push({name,rows});i=book.sheets.length-1;}
+  book.active=i;renderAll();message("recordsStatus","Importación realizada. Guardá los cambios.");
+ }catch(err){message("recordsStatus","Error al importar: "+err.message,true);}
+ finally{e.target.value="";}
+};
+$("exportBtn").onclick=()=>{
+ const ws=XLSX.utils.json_to_sheet(sheet().rows),wb=XLSX.utils.book_new();
+ XLSX.utils.book_append_sheet(wb,ws,sheet().name.slice(0,31)||"Registros");
+ XLSX.writeFile(wb,(sheet().name||"registros")+".xlsx");
+};
+
+/* STOCK ACTUAL */
+function guessCol(cols,terms){
+ return cols.find(c=>terms.some(t=>c.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").includes(t)));
+}
+function setupStockControls(){
+ const sel=$("stockSheetSelect"),old=Number(sel.value||book.stockConfig.sheet||0);
+ sel.innerHTML="";
+ book.sheets.forEach((s,i)=>{const o=document.createElement("option");o.value=i;o.textContent=s.name;sel.appendChild(o);});
+ const index=Math.min(Math.max(0,Number(book.stockConfig.sheet??old)),book.sheets.length-1);
+ sel.value=String(index);populateStockColumns(false);
+}
+function populateStockColumns(guess=true){
+ const i=Number($("stockSheetSelect").value||0),cols=columns(book.sheets[i]?.rows||[]);
+ const fields=[["stockProductCol","product",["producto","descripcion","articulo","nombre"]],
+ ["stockCodeCol","code",["codigo","cod","sku","ean"]],
+ ["stockQtyCol","qty",["cantidad","stock","cant","existencia","unidades"]]];
+ fields.forEach(([id,key,terms])=>{
+  const el=$(id),previous=book.stockConfig[key]||"";
+  el.innerHTML='<option value="">— Seleccionar columna —</option>';
+  cols.forEach(c=>{const o=document.createElement("option");o.value=c;o.textContent=c;el.appendChild(o);});
+  const found=guess?guessCol(cols,terms):previous;
+  el.value=cols.includes(previous)?previous:(found||"");
+ });
+ book.stockConfig.sheet=i;
+}
+$("stockSheetSelect").onchange=()=>{book.stockConfig.sheet=Number($("stockSheetSelect").value);populateStockColumns(true);renderStock();};
+["stockProductCol","stockCodeCol","stockQtyCol"].forEach((id,i)=>{
+ $(id).onchange=()=>{book.stockConfig[["product","code","qty"][i]]=$(id).value;renderStock();};
+});
+$("refreshStockBtn").onclick=()=>{populateStockColumns(false);renderStock();};
+function numberValue(v){
+ if(typeof v==="number")return Number.isFinite(v)?v:0;
+ let s=String(v??"").trim().replace(/\s/g,"");
+ if(!s)return 0;
+ if(s.includes(",")&&s.includes(".")){
+  s=s.lastIndexOf(",")>s.lastIndexOf(".")?s.replace(/\./g,"").replace(",","."):s.replace(/,/g,"");
+ }else if(s.includes(","))s=s.replace(",",".");
+ const n=Number(s);return Number.isFinite(n)?n:0;
+}
+function getStockRows(){
+ const i=Number($("stockSheetSelect").value||0),rows=book.sheets[i]?.rows||[];
+ const p=$("stockProductCol").value,c=$("stockCodeCol").value,q=$("stockQtyCol").value;
+ if(!p||!c||!q)return {rows:[],error:"Elegí las columnas de producto, código y cantidad."};
+ const map=new Map();
+ rows.forEach(r=>{
+  const product=String(r[p]??"").trim(),code=String(r[c]??"").trim();
+  const qty=numberValue(r[q]);
+  if(!product&&!code)return;
+  const key=code+"||"+product;
+  if(!map.has(key))map.set(key,{code,product,qty:0});
+  map.get(key).qty+=qty;
+ });
+ return {rows:[...map.values()].sort((a,b)=>a.product.localeCompare(b.product,"es")),error:""};
+}
+function renderStock(){
+ const result=getStockRows();
+ $("printCompany").textContent=book.design.title||"FITIN CAMPO";
+ $("printTitle").textContent=book.design.stockHeading||"Stock actual";
+ $("printDate").textContent="Fecha de emisión: "+localDate();
+ if(result.error){
+  $("stockTable").innerHTML="<p style='padding:12px'>"+esc(result.error)+"</p>";
+  $("stockStats").innerHTML="";message("stockStatus",result.error,true);return;
+ }
+ const rows=result.rows;
+ $("stockStats").innerHTML=[
+  ["Productos",rows.length],
+  ["Unidades totales",rows.reduce((s,r)=>s+r.qty,0)]
+ ].map(([a,b])=>'<div class="stat"><span class="muted">'+a+'</span><strong>'+b+'</strong></div>').join("");
+ $("stockTable").innerHTML="<table><thead><tr><th>Código</th><th>Producto</th><th>Cantidad total</th></tr></thead><tbody>"+
+  (rows.length?rows.map(r=>"<tr><td>"+esc(r.code)+"</td><td>"+esc(r.product)+"</td><td>"+esc(r.qty)+"</td></tr>").join(""):"<tr><td colspan='3'>No hay productos para mostrar.</td></tr>")+
+  "</tbody></table>";
+ message("stockStatus",rows.length+" productos consolidados.");
+}
+$("printStockBtn").onclick=()=>{
+ renderStock();
+ if(getStockRows().error){alert("Seleccioná las tres columnas antes de imprimir.");return;}
+ window.print();
+};
+
+/* PANEL PRINCIPAL */
+function renderDashboard(){
+ const rows=sheet().rows,cols=columns(rows);
+ $("defaultStats").innerHTML=[
+  ["Hojas",book.sheets.length],["Registros en la hoja activa",rows.length],["Columnas",cols.length]
+ ].map(([a,b])=>'<div class="stat"><span class="muted">'+a+'</span><strong>'+b+'</strong></div>').join("");
+ renderWidgetsInto("dashboardWidgets","dashboard");
+}
+
+/* CONSTRUCTOR DE PANELES */
+function widgetDefaults(){
+ return {id:uid(),title:"Nuevo panel",type:"metric",tab:"dashboard",
+  sheet:0,category:"",value:"",size:"6"};
+}
+function widgetSourceOptions(selected){
+ return book.sheets.map((s,i)=>'<option value="'+i+'" '+(Number(selected)===i?"selected":"")+'>'+esc(s.name)+'</option>').join("");
+}
+function columnOptions(index,selected){
+ const cols=columns(book.sheets[index]?.rows||[]);
+ return '<option value="">— Elegir columna —</option>'+cols.map(c=>'<option value="'+esc(c)+'" '+(c===selected?"selected":"")+'>'+esc(c)+'</option>').join("");
+}
+function renderWidgetEditor(){
+ const el=$("widgetEditor");
+ if(!book.widgets.length){el.innerHTML="<p class='muted'>Todavía no hay paneles personalizados.</p>";return;}
+ el.innerHTML=book.widgets.map(w=>{
+  const tabs=[{id:"dashboard",label:book.tabLabels.dashboard},...book.customTabs];
+  return '<div class="editor-row" data-widget="'+esc(w.id)+'">'+
+   '<div><label>Título</label><input data-k="title" value="'+esc(w.title)+'"></div>'+
+   '<div><label>Tipo de panel</label><select data-k="type">'+
+    [["metric","Indicador numérico"],["table","Tabla de registros"],["bar","Gráfico de barras"],["pie","Gráfico de torta"]].map(([v,l])=>'<option value="'+v+'" '+(w.type===v?"selected":"")+'>'+l+'</option>').join("")+
+   '</select></div>'+
+   '<div><label>Pestaña destino</label><select data-k="tab">'+tabs.map(t=>'<option value="'+t.id+'" '+(w.tab===t.id?"selected":"")+'>'+esc(t.label||t.id)+'</option>').join("")+'</select></div>'+
+   '<div><label>Hoja de datos</label><select data-k="sheet">'+widgetSourceOptions(w.sheet)+'</select></div>'+
+   '<div><label>Columna para agrupar</label><select data-k="category">'+columnOptions(w.sheet,w.category)+'</select></div>'+
+   '<div><label>Columna numérica</label><select data-k="value">'+columnOptions(w.sheet,w.value)+'</select></div>'+
+   '<div><label>Ancho del panel</label><select data-k="size">'+
+    '<option value="4" '+(w.size==="4"?"selected":"")+'>1/3</option>'+
+    '<option value="6" '+(w.size==="6"?"selected":"")+'>1/2</option>'+
+    '<option value="12" '+(w.size==="12"?"selected":"")+'>Completo</option></select></div>'+
+   '<div style="display:flex;align-items:end"><button class="danger" data-remove="'+esc(w.id)+'">Eliminar panel</button></div>'+
+  '</div>';
+ }).join("");
+ el.querySelectorAll("[data-widget]").forEach(row=>{
+  const w=book.widgets.find(x=>x.id===row.dataset.widget);
+  row.querySelectorAll("[data-k]").forEach(input=>{
+   input.onchange=()=>{
+    w[input.dataset.k]=input.value;
+    if(input.dataset.k==="sheet"){
+     w.sheet=Number(input.value);w.category="";w.value="";renderWidgetEditor();
     }
+   };
   });
-
-  d.showStats = $("dShowStats").checked;
-  d.showDescription = $("dShowDescription").checked;
-  d.showFooter = $("dShowFooter").checked;
-
-  colorFields.forEach(([key]) => {
-    const value = $("hex_" + key).value.trim();
-    d[key] = /^#[0-9a-fA-F]{6}$/.test(value)
-      ? value : DEFAULT_DESIGN[key];
-  });
-
-  d.fontSize = Math.min(24, Math.max(11, d.fontSize || 14));
-  d.titleSize = Math.min(48, Math.max(18, d.titleSize || 26));
-  d.contentWidth = Math.min(2200, Math.max(700, d.contentWidth || 1500));
-  d.radius = Math.min(40, Math.max(0, d.radius || 0));
-  d.shadow = Math.min(30, Math.max(0, d.shadow || 0));
-  d.gap = Math.min(40, Math.max(4, d.gap || 16));
-  return d;
-}
-
-function applyDesign() {
-  const d = { ...DEFAULT_DESIGN, ...book.design };
-  const root = document.documentElement;
-  root.style.setProperty("--primary", d.primary);
-  root.style.setProperty("--header", d.header);
-  root.style.setProperty("--bg", d.bg);
-  root.style.setProperty("--card", d.card);
-  root.style.setProperty("--text", d.text);
-  root.style.setProperty("--muted", d.muted);
-  root.style.setProperty("--border", d.border);
-  root.style.setProperty("--font", d.font);
-  root.style.setProperty("--font-size", d.fontSize + "px");
-  root.style.setProperty("--content-width", d.contentWidth + "px");
-  root.style.setProperty("--radius", d.radius + "px");
-  root.style.setProperty("--shadow",
-    "0 4px " + d.shadow + "px rgba(20,35,65," +
-    (d.shadow === 0 ? "0" : ".12") + ")");
-  root.style.setProperty("--design-gap", d.gap + "px");
-
-  $("pageTitle").textContent = d.title;
-  $("pageSubtitle").textContent = d.subtitle;
-  $("loginTitle").textContent = d.loginTitle;
-  $("loginSubtitle").textContent = d.loginSubtitle;
-  $("dashboardTitle").textContent = d.dashboardTitle;
-  $("dashboardDescription").textContent = d.dashboardDescription;
-  $("recordsTitle").textContent = d.recordsTitle;
-  $("recordsDescription").textContent = d.recordsDescription;
-  $("footer").textContent = d.title + " · Turboflit";
-  $("footer").classList.toggle("hidden", !d.showFooter);
-  $("stats").classList.toggle("hidden", !d.showStats);
-  $("dashboardDescription").classList.toggle("hidden", !d.showDescription);
-  $("recordsDescription").classList.toggle("hidden", !d.showDescription);
-  $("pageTitle").style.fontSize = d.titleSize + "px";
-
-  document.querySelectorAll(".grid").forEach(el => {
-    el.style.gap = d.gap + "px";
-  });
-  document.querySelectorAll(".tabs button").forEach(el => {
-    el.style.borderRadius = d.radius + "px";
-  });
-}
-
-function previewDesignFromForm() {
-  book.design = readDesignForm();
-  applyDesign();
-}
-
-$("applyDesignBtn").addEventListener("click", () => {
-  book.design = readDesignForm();
-  applyDesign();
-  status("designStatus", "Vista previa aplicada. Aún tenés que guardar para conservarla.");
-});
-
-$("saveDesignBtn").addEventListener("click", async () => {
-  try {
-    book.design = readDesignForm();
-    applyDesign();
-    status("designStatus", "Guardando diseño...");
-    await saveBook("Diseño guardado en Supabase.");
-    status("designStatus", "Diseño guardado y compartido con los usuarios que accedan a estos datos.");
-  } catch (error) {
-    status("designStatus", error.message, true);
+ });
+ el.querySelectorAll("[data-remove]").forEach(b=>b.onclick=()=>{
+  if(confirm("¿Eliminar este panel?")){
+   book.widgets=book.widgets.filter(w=>w.id!==b.dataset.remove);renderWidgetEditor();
+   renderWidgetsInto("dashboardWidgets","dashboard");
   }
-});
-
-$("resetDesignBtn").addEventListener("click", () => {
-  if (!confirm("¿Restablecer los valores predeterminados del diseño?")) return;
-  book.design = { ...DEFAULT_DESIGN };
-  populateDesignForm();
-  applyDesign();
-  status("designStatus", "Diseño predeterminado aplicado. Guardalo si querés conservarlo.");
-});
-
-[
-  "dTitle", "dSubtitle", "dLoginTitle", "dLoginSubtitle",
-  "dDashboardTitle", "dDashboardDescription",
-  "dRecordsTitle", "dRecordsDescription", "dFont", "dFontSize",
-  "dTitleSize", "dContentWidth", "dRadius", "dShadow", "dGap",
-  "dShowStats", "dShowDescription", "dShowFooter"
-].forEach(id => {
-  $(id).addEventListener("input", previewDesignFromForm);
-  $(id).addEventListener("change", previewDesignFromForm);
-});
-
-/* RESUMEN */
-function renderDashboard() {
-  const sheet = currentSheet();
-  const rows = sheet?.rows || [];
-  const columns = getColumns(rows);
-  const totalRows = rows.length;
-  const totalSheets = book.sheets.length;
-
-  $("stats").innerHTML = [
-    ["Tablas", totalSheets],
-    ["Registros", totalRows],
-    ["Columnas", columns.length]
-  ].map(([label, value]) =>
-    '<div class="stat"><span class="muted">' + label +
-    '</span><strong>' + value + "</strong></div>"
-  ).join("");
-
-  $("summaryText").textContent =
-    'Tabla actual: "' + (sheet?.name || "Registros") +
-    '". Contiene ' + totalRows + " registros y " +
-    columns.length + " columnas.";
+ });
+}
+$("addWidgetBtn").onclick=()=>{
+ book.widgets.push(widgetDefaults());renderWidgetEditor();
+};
+function renderWidgetsInto(containerId,tabId){
+ const container=$(containerId);
+ container.innerHTML="";
+ book.widgets.filter(w=>w.tab===tabId).forEach(w=>{
+  const wrapper=document.createElement("div");
+  wrapper.className="widget "+(w.size==="12"?"span12":w.size==="4"?"span4":"");
+  const panel=document.createElement("div");panel.className="panel";
+  const head=document.createElement("div");head.className="widget-head";
+  const title=document.createElement("h3");title.textContent=w.title||"Panel";
+  head.appendChild(title);panel.appendChild(head);
+  const rows=book.sheets[Number(w.sheet)]?.rows||[];
+  if(w.type==="metric"){
+   const stat=document.createElement("div");stat.className="stat";
+   let value=rows.length;
+   if(w.value)value=rows.reduce((sum,r)=>sum+numberValue(r[w.value]),0);
+   stat.innerHTML='<span class="muted">'+esc(w.value||"Cantidad de registros")+'</span><strong>'+esc(value)+'</strong>';
+   panel.appendChild(stat);
+  }else if(w.type==="table"){
+   const cols=columns(rows);
+   const table=document.createElement("div");table.className="table-wrap";
+   table.innerHTML="<table><thead><tr>"+cols.map(c=>"<th>"+esc(c)+"</th>").join("")+
+    "</tr></thead><tbody>"+rows.slice(0,100).map(r=>"<tr>"+cols.map(c=>"<td>"+esc(r[c]??"")+"</td>").join("")+"</tr>").join("")+
+    "</tbody></table>";
+   panel.appendChild(table);
+  }else{
+   const canvas=document.createElement("canvas");panel.appendChild(canvas);
+   if(!window.Chart){
+    panel.insertAdjacentHTML("beforeend","<p>No se pudo cargar Chart.js.</p>");
+   }else{
+    const grouped=new Map();
+    rows.forEach(r=>{
+     const label=String(r[w.category]??"(Sin dato)");
+     const val=w.value?numberValue(r[w.value]):1;
+     grouped.set(label,(grouped.get(label)||0)+val);
+    });
+    const entries=[...grouped.entries()].sort((a,b)=>b[1]-a[1]).slice(0,25);
+    const chart=new Chart(canvas,{
+     type:w.type==="pie"?"pie":"bar",
+     data:{labels:entries.map(x=>x[0]),datasets:[{label:w.value||"Registros",data:entries.map(x=>x[1])}]},
+     options:{responsive:true,maintainAspectRatio:true,
+      plugins:{legend:{display:w.type==="pie"},title:{display:false}},
+      scales:w.type==="pie"?{}:{y:{beginAtZero:true}}}
+    });
+    canvas._chart=chart;
+   }
+  }
+  wrapper.appendChild(panel);container.appendChild(wrapper);
+ });
 }
 
-/* APLICACIÓN INICIAL */
-(async function init() {
-  const { data } = await sb.auth.getSession();
-  if (data?.session?.user) {
-    currentUser = data.session.user;
-    await showApplication();
-  }
-})();
+/* EDITOR DE TÍTULOS DE PESTAÑAS */
+function renderTabTitleEditor(){
+ $("tabTitleEditor").innerHTML=allTabs().map(t=>
+  '<div class="editor-row"><div><label>Nombre visible</label><input data-tab-label="'+esc(t.id)+'" value="'+esc(t.label)+'"></div>'+
+  '<div><label>Identificador</label><input disabled value="'+esc(t.id)+'"></div></div>'
+ ).join("");
+ $("tabTitleEditor").querySelectorAll("[data-tab-label]").forEach(input=>{
+  input.onchange=()=>{
+   const id=input.dataset.tabLabel;
+   if(id==="dashboard"||id==="records"||id==="stock"||id==="design")book.tabLabels[id]=input.value.trim()||DEFAULT_LABELS[id];
+   else{const t=book.customTabs.find(x=>x.id===id);if(t)t.label=input.value.trim()||"Pestaña";}
+  };
+ });
+}
+$("saveTabTitlesBtn").onclick=async()=>{
+ try{
+  $("tabTitleEditor").querySelectorAll("[data-tab-label]").forEach(input=>{
+   const id=input.dataset.tabLabel;
+   if(Object.hasOwn(book.tabLabels,id))book.tabLabels[id]=input.value.trim()||DEFAULT_LABELS[id];
+   else{const t=book.customTabs.find(x=>x.id===id);if(t)t.label=input.value.trim()||"Pestaña";}
+  });
+  await saveBook();renderTabs();renderTabTitleEditor();renderWidgetEditor();
+  message("designStatus","Títulos de pestañas guardados.");
+ }catch(e){message("designStatus",e.message,true);}
+};
+$("addTabBtn").onclick=async()=>{
+ const label=prompt("Nombre de la nueva pestaña:");
+ if(!label?.trim())return;
+ const id="tab_"+uid();
+ book.customTabs.push({id,label:label.trim()});
+ try{await saveBook();renderTabs();renderTabTitleEditor();renderWidgetEditor();showTab(id);}
+ catch(e){message("designStatus",e.message,true);}
+};
+$("renameCurrentTabBtn").onclick=async()=>{
+ const t=book.customTabs.find(x=>x.id===activeTab);if(!t)return;
+ const n=prompt("Nuevo nombre de la pestaña:",t.label);if(!n?.trim())return;
+ t.label=n.trim();
+ try{await saveBook();renderTabs();renderTabTitleEditor();renderWidgetEditor();$("customHeading").textContent=t.label;}
+ catch(e){message("designStatus",e.message,true);}
+};
+$("deleteCurrentTabBtn").onclick=async()=>{
+ const t=book.customTabs.find(x=>x.id===activeTab);if(!t)return;
+ if(!confirm("¿Eliminar esta pestaña? Sus paneles también se eliminarán."))return;
+ book.customTabs=book.customTabs.filter(x=>x.id!==activeTab);
+ book.widgets=book.widgets.filter(w=>w.tab!==activeTab);
+ try{await saveBook();renderTabs();renderTabTitleEditor();renderWidgetEditor();showTab("dashboard");}
+ catch(e){message("designStatus",e.message,true);}
+};
+
+/* DISEÑO: colores, textos y tipografía */
+function makeColorEditor(){
+ $("colorControls").innerHTML=COLORS.map(([key,label])=>
+  '<div><label>'+label+'</label><div class="color-field">'+
+  '<input type="color" id="color_'+key+'"><input id="hex_'+key+'" maxlength="7"></div></div>'
+ ).join("");
+ COLORS.forEach(([key])=>{
+  $("color_"+key).oninput=()=>{$("hex_"+key).value=$("color_"+key).value;previewDesign();};
+  $("hex_"+key).onchange=()=>{
+   if(/^#[0-9a-f]{6}$/i.test($("hex_"+key).value)){$("color_"+key).value=$("hex_"+key).value;previewDesign();}
+  };
+ });
+}
+makeColorEditor();
+function populateDesign(){
+ const d={...DEFAULT_DESIGN,...book.design};
+ const map={dTitle:"title",dSubtitle:"subtitle",dLoginTitle:"loginTitle",
+ dLoginSubtitle:"loginSubtitle",dDashboardHeading:"dashboardHeading",
+ dRecordsHeading:"recordsHeading",dStockHeading:"stockHeading",
+ dFont:"font",dFontSize:"fontSize",dTitleSize:"titleSize",dWidth:"width",
+ dRadius:"radius",dGap:"gap"};
+ Object.entries(map).forEach(([id,k])=>$(id).value=d[k]);
+ COLORS.forEach(([k])=>{$("color_"+k).value=d[k];$("hex_"+k).value=d[k];});
+}
+function readDesign(){
+ const d={...DEFAULT_DESIGN};
+ const map={dTitle:"title",dSubtitle:"subtitle",dLoginTitle:"loginTitle",
+ dLoginSubtitle:"loginSubtitle",dDashboardHeading:"dashboardHeading",
+ dRecordsHeading:"recordsHeading",dStockHeading:"stockHeading",dFont:"font",
+ dFontSize:"fontSize",dTitleSize:"titleSize",dWidth:"width",dRadius:"radius",dGap:"gap"};
+ Object.entries(map).forEach(([id,k])=>{
+  d[k]=k==="font"||["title","subtitle","loginTitle","loginSubtitle","dashboardHeading","recordsHeading","stockHeading"].includes(k)
+   ?$(id).value:Number($(id).value);
+ });
+ COLORS.forEach(([k])=>{const v=$("hex_"+k).value;d[k]=/^#[0-9a-f]{6}$/i.test(v)?v:DEFAULT_DESIGN[k];});
+ d.fontSize=Math.min(24,Math.max(11,d.fontSize||14));
+ d.titleSize=Math.min(48,Math.max(18,d.titleSize||28));
+ d.width=Math.min(2200,Math.max(700,d.width||1600));
+ d.radius=Math.min(40,Math.max(0,d.radius||0));
+ d.gap=Math.min(40,Math.max(4,d.gap||16));
+ return d;
+}
+function applyDesign(){
+ const d={...DEFAULT_DESIGN,...book.design},r=document.documentElement;
+ [["primary",d.primary],["header",d.header],["bg",d.bg],["card",d.card],
+ ["text",d.text],["muted",d.muted],["border",d.border],["font",d.font],
+ ["font-size",d.fontSize+"px"],["content-width",d.width+"px"],
+ ["radius",d.radius+"px"],["gap",d.gap+"px"]].forEach(([k,v])=>r.style.setProperty("--"+k,v));
+ $("pageTitle").textContent=d.title;$("pageSubtitle").textContent=d.subtitle;
+ $("loginTitle").textContent=d.loginTitle;$("loginSubtitle").textContent=d.loginSubtitle;
+ $("dashboardHeading").textContent=d.dashboardHeading;
+ $("recordsHeading").textContent=d.recordsHeading;$("stockHeading").textContent=d.stockHeading;
+ $("pageTitle").style.fontSize=d.titleSize+"px";
+ $("footer").textContent=d.title+" · Gestión de stock";
+ renderTabs();
+}
+function previewDesign(){book.design=readDesign();applyDesign();}
+$("previewDesignBtn").onclick=()=>{previewDesign();message("designStatus","Vista previa aplicada. Guardá para conservarla.");};
+$("saveDesignBtn").onclick=async()=>{
+ try{book.design=readDesign();applyDesign();await saveBook();message("designStatus","Diseño, pestañas y paneles guardados.");}
+ catch(e){message("designStatus",e.message,true);}
+};
+$("resetDesignBtn").onclick=()=>{
+ if(!confirm("¿Restablecer colores y tipografía?"))return;
+ book.design={...DEFAULT_DESIGN};populateDesign();applyDesign();
+ message("designStatus","Valores predeterminados aplicados. Guardá para conservarlos.");
+};
+["dTitle","dSubtitle","dLoginTitle","dLoginSubtitle","dDashboardHeading","dRecordsHeading","dStockHeading",
+ "dFont","dFontSize","dTitleSize","dWidth","dRadius","dGap"].forEach(id=>{
+ $(id).addEventListener("input",previewDesign);
+});
 </script>
 </body>
 </html>
