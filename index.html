@@ -794,52 +794,75 @@ $("saveRecordsBtn").onclick=async()=>{
 };
 $("importBtn").onclick=()=>$("excelFile").click();
 $("excelFile").onchange=async e=>{
-  const f=e.target.files[0];if(!f)return;
+  const f=e.target.files?.[0];
+  if(!f) return;
+  const previousBook=JSON.parse(JSON.stringify(book));
   try {
-    const wb=XLSX.read(await f.arrayBuffer(),{type:"array"});
-    if(!wb.SheetNames || !wb.SheetNames.length) throw new Error("El archivo no contiene hojas para importar.");
-    const fileBase=f.name.replace(/\.(xlsx|xls|csv)$/i,"").trim()||"Importación";
+    if(typeof XLSX==="undefined") throw new Error("No se pudo cargar el lector de Excel. Revisá la conexión a internet y volvé a intentarlo.");
+    const buffer=await f.arrayBuffer();
+    const wb=XLSX.read(buffer,{type:"array", cellDates:false, bookSheets:false, bookProps:false});
+    const worksheetNames=Array.isArray(wb.SheetNames)?wb.SheetNames:[];
+    if(!worksheetNames.length) throw new Error("El archivo no contiene hojas de Excel reconocibles.");
+
+    const fileBase=f.name.replace(/\.(xlsx|xls|xlsm|xlsb|csv)$/i,"").trim()||"Importación";
     const imported=[];
-    const worksheetNames=(f.name.toLowerCase().endsWith(".csv") ? [wb.SheetNames[0]] : wb.SheetNames);
-    for(const worksheetName of worksheetNames) {
+    for(let n=0;n<worksheetNames.length;n++) {
+      const worksheetName=worksheetNames[n];
       const ws=wb.Sheets[worksheetName];
-      if(!ws) continue;
-      const matrix=XLSX.utils.sheet_to_json(ws,{header:1,defval:"",raw:false});
-      if(!matrix.length) {
-        imported.push({name:worksheetNames.length===1?fileBase:`${fileBase} — ${worksheetName}`,rows:[]});
+      if(!ws) {
+        console.warn("FITIN CAMPO: no se encontró la hoja del libro",worksheetName);
         continue;
       }
-      const rawHeaders=matrix[0].map(v=>String(v??"").trim());
+      // Definir rango explícitamente para que se lean todas las filas/columnas de cada pestaña.
+      const matrix=XLSX.utils.sheet_to_json(ws,{header:1,defval:"",raw:false,blankrows:false});
+      const displayName=worksheetNames.length===1?fileBase:`${fileBase} — ${worksheetName}`;
+      if(!matrix.length) {
+        imported.push({name:displayName,rows:[]});
+        continue;
+      }
+      const rawHeaders=(matrix[0]||[]).map(v=>String(v??"").trim());
       const usedHeaders=new Set();
       const headers=rawHeaders.map((h,i)=>{
-        let name=h||`Columna ${i+1}`,base=name,n=2;
-        while(usedHeaders.has(name)) name=`${base} (${n++})`;
+        let name=h||`Columna ${i+1}`,base=name,suffix=2;
+        while(usedHeaders.has(name)) name=`${base} (${suffix++})`;
         usedHeaders.add(name);return name;
       });
-      const rows=matrix.slice(1).filter(row=>row.some(v=>String(v??"").trim()!=="")).map(row=>{
+      const rows=matrix.slice(1).filter(row=>Array.isArray(row)&&row.some(v=>String(v??"").trim()!=="")).map(row=>{
         const obj={};headers.forEach((h,i)=>obj[h]=row[i]??"");return obj;
       });
-      const sheetName=worksheetNames.length===1?fileBase:`${fileBase} — ${worksheetName}`;
-      imported.push({name:sheetName,rows});
+      imported.push({name:displayName,rows});
     }
-    if(!imported.length) throw new Error("No se encontraron hojas válidas para importar.");
+    if(!imported.length) throw new Error(`Se detectaron ${worksheetNames.length} hoja(s), pero no se pudo leer ninguna. Hojas detectadas: ${worksheetNames.join(", ")}`);
+
     const collisions=imported.filter(item=>book.sheets.some(existing=>existing.name===item.name));
-    if(collisions.length && !confirm(`Ya existen ${collisions.length} hoja(s) con el mismo nombre (${collisions.map(x=>x.name).join(", ")}). ¿Reemplazar esas hojas y agregar las demás?`)) return;
+    if(collisions.length && !confirm(`Ya existen ${collisions.length} hoja(s) con el mismo nombre:
+${collisions.map(x=>x.name).join("\n")}
+
+¿Reemplazar esas hojas y agregar las demás?`)) return;
     let firstImportedIndex=-1;
     for(const item of imported) {
       let i=book.sheets.findIndex(existing=>existing.name===item.name);
-      if(i>=0) book.sheets[i].rows=item.rows;
+      if(i>=0) book.sheets[i]={...book.sheets[i],rows:item.rows};
       else { i=book.sheets.length; book.sheets.push(item); }
       if(firstImportedIndex<0) firstImportedIndex=i;
     }
     book.active=firstImportedIndex>=0?firstImportedIndex:0;
-    // Keep each page's sheet selectors in range after adding all workbook tabs.
     renderAll();
     renderSheetSelect();
-    message("recordsStatus",`${imported.length} hoja(s) importada(s) correctamente. Revisá las hojas desde “Hoja de trabajo” o desde el selector de Registros y presioná Guardar registros para conservar los cambios.`);
+    message("recordsStatus",`Se leyeron ${worksheetNames.length} hoja(s) del Excel y se importaron ${imported.length}: ${imported.map(x=>x.name).join(" · ")}. Guardando en Supabase...`);
+    try {
+      await saveBook();
+      message("recordsStatus",`¡Importación guardada! ${imported.length} hoja(s): ${imported.map(x=>x.name).join(" · ")}. Para ver cada una, usá el selector “Hoja de trabajo” o el selector de Registros.`);
+    } catch(saveErr) {
+      message("recordsStatus",`Las hojas se leyeron, pero no se pudieron guardar en Supabase: ${saveErr?.message||saveErr}. No cierres la página; revisá la conexión y presioná “Guardar registros”.`,true);
+    }
   } catch(err) {
+    book=previousBook;
+    renderAll();
     message("recordsStatus","Error al importar: "+(err?.message||err),true);
-  } finally {e.target.value="";}
+  } finally {
+    e.target.value="";
+  }
 };
 $("exportBtn").onclick=()=>{
   const ws=XLSX.utils.json_to_sheet(sheet().rows);
