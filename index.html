@@ -264,7 +264,17 @@ footer {text-align:center;color:var(--muted);padding:22px}
       <button id="addWidgetBtn">+ Agregar panel</button>
       <div id="widgetEditor"></div>
       <hr>
-      <h3>3. Títulos generales</h3>
+      <hr>
+      <h3>3. Anchos de columnas por página</h3>
+      <p class="muted">Elegí la página o tabla y ajustá el ancho de cada columna en píxeles. Los cambios se guardan junto con el diseño.</p>
+      <div class="design-grid">
+        <div><label>Página / tabla</label><select id="columnWidthTarget"></select></div>
+      </div>
+      <div id="columnWidthEditor" class="design-grid"></div>
+      <div class="toolbar"><button id="saveColumnWidthsBtn">Guardar anchos</button><button class="secondary" id="resetColumnWidthsBtn">Restablecer anchos de esta tabla</button></div>
+      <p id="columnWidthStatus" class="status"></p>
+      <hr>
+      <h3>4. Títulos generales</h3>
       <div class="design-grid">
         <div><label>Título principal</label><input id="dTitle"></div>
         <div><label>Subtítulo</label><input id="dSubtitle"></div>
@@ -275,10 +285,10 @@ footer {text-align:center;color:var(--muted);padding:22px}
         <div><label>Título de Stock</label><input id="dStockHeading"></div>
       </div>
       <hr>
-      <h3>4. Colores</h3>
+      <h3>5. Colores</h3>
       <div id="colorControls" class="design-grid"></div>
       <hr>
-      <h3>5. Tipografía y formato</h3>
+      <h3>6. Tipografía y formato</h3>
       <div class="design-grid">
         <div><label>Fuente</label>
           <select id="dFont">
@@ -296,7 +306,7 @@ footer {text-align:center;color:var(--muted);padding:22px}
         <div><label>Redondeo</label><input id="dRadius" type="number" min="0" max="40"></div>
       </div>
       <hr>
-      <h3>6. Logos e imágenes</h3>
+      <h3>7. Logos e imágenes</h3>
       <div class="design-grid">
         <div><label>Imagen (máximo 500 KB)</label><input id="logoFile" type="file" accept="image/png,image/jpeg,image/webp"></div>
         <div><label>Nombre</label><input id="logoName" placeholder="Logo de la empresa"></div>
@@ -391,7 +401,7 @@ function makeDefaultBook() {
   return {
     sheets:[{name:"Registros",rows:[]}],
     active:0,
-    design:{...DEFAULT_DESIGN,logos:[]},
+    design:{...DEFAULT_DESIGN,logos:[],columnWidths:{}},
     tabLabels:{...DEFAULT_LABELS},
     customTabs:[],
     widgets:[],
@@ -550,7 +560,7 @@ async function loadBook() {
     ...defaults,
     ...saved,
     sheets:loadedSheets,
-    design:{...DEFAULT_DESIGN,...(saved.design||{}),logos:Array.isArray(saved.design?.logos)?saved.design.logos:[]},
+    design:{...DEFAULT_DESIGN,...(saved.design||{}),logos:Array.isArray(saved.design?.logos)?saved.design.logos:[],columnWidths:{...(saved.design?.columnWidths||{})}},
     tabLabels:{...DEFAULT_LABELS,...(saved.tabLabels||{})},
     customTabs:Array.isArray(saved.customTabs)?saved.customTabs:[],
     widgets:Array.isArray(saved.widgets)?saved.widgets:[],
@@ -594,6 +604,7 @@ async function startApp() {
     renderAll();
     renderTabTitleEditor();
     renderWidgetEditor();
+    renderColumnWidthTargets();renderColumnWidthEditor();
     showTab("dashboard");
     $("loginStatus").textContent="";
   } catch(err) {
@@ -665,7 +676,7 @@ function showTab(id) {
     setupCountControls();setupProductControls();renderDashboard();renderWidgetsInto("dashboardWidgets","dashboard");
   }
   if(id==="stock") {setupStockControls();renderStock();}
-  if(id==="design") {renderTabTitleEditor();renderWidgetEditor();renderLogoEditor();renderLogos();}
+  if(id==="design") {renderTabTitleEditor();renderWidgetEditor();renderColumnWidthTargets();renderColumnWidthEditor();renderLogoEditor();renderLogos();}
 }
 
 /* REGISTROS */
@@ -684,6 +695,7 @@ function renderAll() {
 $("sheetSelect").onchange=()=>{
   book.active=Number($("sheetSelect").value);
   renderRecords();renderDashboard();
+  if($("designTab")&&!$("designTab").classList.contains("hidden")){renderColumnWidthTargets();renderColumnWidthEditor();}
 };
 function renderRecords() {
   const s=sheet(),cols=columns(s.rows),q=$("searchInput").value.trim().toLowerCase();
@@ -694,12 +706,13 @@ function renderRecords() {
     return;
   }
 
-  let html="<table><thead><tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"<th>Acciones</th></tr></thead><tbody>";
+  let html=`<table data-width-key="records:${book.active}"><thead><tr>`+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"<th>Acciones</th></tr></thead><tbody>";
   rows.forEach(x=>{
     html+="<tr>"+cols.map(c=>`<td contenteditable="true" data-row="${x.i}" data-col="${esc(c)}">${esc(x.r[c]??"")}</td>`).join("")+
       `<td><button class="danger" data-del="${x.i}">Eliminar</button></td></tr>`;
   });
   $("recordsTable").innerHTML=html+"</tbody></table>";
+  applyColumnWidths($("recordsTable").querySelector("table"),`records:${book.active}`,cols.concat(["Acciones"]));
 
   $("recordsTable").querySelectorAll("[contenteditable]").forEach(td=>{
     td.onblur=()=>{
@@ -931,10 +944,11 @@ function renderInventory() {
     ["Stock total consolidado",total,"Suma de las ubicaciones configuradas"]
   ].map(([a,b,c])=>`<div class="stat"><span class="muted">${esc(a)}</span><strong>${esc(b)}</strong><small>${esc(c)}</small></div>`).join("");
   const headers=["Producto","Código","Stock total","Trenque Lauquen","Consignación","En fabricación","Embarques por fecha"];
-  $("inventoryTable").innerHTML='<table><thead><tr>'+headers.map(h=>`<th>${esc(h)}</th>`).join("")+'</tr></thead><tbody>'+rows.map(r=>{
+  $("inventoryTable").innerHTML='<table data-width-key="inventory"><thead><tr>'+headers.map(h=>`<th>${esc(h)}</th>`).join("")+'</tr></thead><tbody>'+rows.map(r=>{
     const totalRow=r.trenque+r.consignacion+r.fabricacion+r.embarques;
     return `<tr><td>${esc(r.name)}</td><td>${esc(r.code||"—")}</td><td><strong>${totalRow}</strong></td><td>${r.trenque}</td><td>${r.consignacion}</td><td>${r.fabricacion}</td><td>${r.embarques}</td></tr>`;
   }).join("")+'</tbody></table>';
+  applyColumnWidths($("inventoryTable").querySelector("table"),"inventory",headers);
   renderAvailabilityOptions();
 }
 function renderAvailabilityOptions() {
@@ -951,13 +965,56 @@ function renderAvailabilityChart() {
   const keys=["trenque","embarques","consignacion","fabricacion"];
   $("availabilityChosen").innerHTML=comparedProducts.length?comparedProducts.map(p=>`<span class="stat" style="padding:6px 10px;margin:0">${esc(p)} <button class="secondary" data-remove-product="${esc(p)}" aria-label="Quitar ${esc(p)}">×</button></span>`).join(""):'<span class="muted">Todavía no agregaste productos a la comparación.</span>';
   $("availabilityChosen").querySelectorAll("[data-remove-product]").forEach(b=>b.onclick=()=>{comparedProducts=comparedProducts.filter(p=>p!==b.dataset.removeProduct);renderAvailabilityChart();});
+  // El gráfico toma los valores directamente de la fila del producto en la hoja de registro.
+  // No suma otras filas con el mismo nombre: muestra los valores tal como figuran en esa fila.
+  const sourceRows=activeRows(Number($("productSheet").value||0));
+  const nameCol=$("productNameCol").value;
   const datasets=comparedProducts.map(product=>{
-    const r=rows.filter(x=>x.name===product).reduce((acc,x)=>{keys.forEach(k=>acc[k]+=x[k]);return acc;},{trenque:0,embarques:0,consignacion:0,fabricacion:0});
-    return {label:product,data:keys.map(k=>loc[k]?r[k]:0)};
+    const sourceRow=sourceRows.find(row=>String(row[nameCol]??"").trim()===product);
+    const values={
+      trenque:loc.trenque&&sourceRow?numberValue(sourceRow[loc.trenque]):0,
+      embarques:loc.embarques&&sourceRow?numberValue(sourceRow[loc.embarques]):0,
+      consignacion:loc.consignacion&&sourceRow?numberValue(sourceRow[loc.consignacion]):0,
+      fabricacion:loc.fabricacion&&sourceRow?numberValue(sourceRow[loc.fabricacion]):0
+    };
+    return {label:product,data:keys.map(k=>values[k])};
   });
   if(availabilityChartInstance) availabilityChartInstance.destroy();
   const canvas=$("availabilityChart");
-  if(window.Chart) availabilityChartInstance=new Chart(canvas,{type:"bar",data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:"bottom"},tooltip:{mode:"index",intersect:false}},scales:{y:{beginAtZero:true,title:{display:true,text:"Unidades"}},x:{title:{display:true,text:"Ubicación"}}}}});
+  if(window.Chart) availabilityChartInstance=new Chart(canvas,{
+    type:"bar",
+    data:{labels,datasets},
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      layout:{padding:{top:24}},
+      plugins:{legend:{display:true,position:"bottom"},tooltip:{mode:"index",intersect:false}},
+      scales:{y:{beginAtZero:true},x:{title:{display:true,text:"Ubicación"}}}
+    },
+    plugins:[{
+      id:"etiquetasValoresSobreBarras",
+      afterDatasetsDraw(chart){
+        const ctx=chart.ctx;
+        ctx.save();
+        ctx.font="600 12px Arial, sans-serif";
+        ctx.textAlign="center";
+        ctx.textBaseline="bottom";
+        chart.data.datasets.forEach((dataset,datasetIndex)=>{
+          const meta=chart.getDatasetMeta(datasetIndex);
+          meta.data.forEach((bar,index)=>{
+            const value=dataset.data[index];
+            if(value===null || value===undefined || !Number.isFinite(Number(value))) return;
+            const text=Number(value).toLocaleString("es-AR",{maximumFractionDigits:2});
+            const x=bar.x;
+            const y=Math.max(chart.chartArea.top+14,bar.y-5);
+            ctx.fillStyle="#1f2937";
+            ctx.fillText(text,x,y);
+          });
+        });
+        ctx.restore();
+      }
+    }]
+  });
   $("availabilityStatus").textContent=comparedProducts.length?`${comparedProducts.length} producto(s) en comparación.`:"Elegí un producto y presioná “Agregar a la comparación”.";
 }
 $("addAvailabilityBtn").onclick=()=>{const p=$("availabilityProduct").value;if(!p){$("availabilityStatus").textContent="Primero elegí un producto.";return;}if(!comparedProducts.includes(p)) comparedProducts.push(p);renderAvailabilityChart();};
@@ -1028,9 +1085,10 @@ function renderStock() {
   $("stockStats").innerHTML=
     `<div class="stat"><span class="muted">Productos</span><strong>${res.rows.length}</strong></div>`+
     `<div class="stat"><span class="muted">Unidades totales</span><strong>${res.rows.reduce((s,r)=>s+r.qty,0)}</strong></div>`;
-  $("stockTable").innerHTML="<table><thead><tr><th>Código</th><th>Producto</th><th>Cantidad total</th></tr></thead><tbody>"+
+  $("stockTable").innerHTML="<table data-width-key=\"stock\"><thead><tr><th>Código</th><th>Producto</th><th>Cantidad total</th></tr></thead><tbody>"+
     (res.rows.length?res.rows.map(r=>`<tr><td>${esc(r.code)}</td><td>${esc(r.product)}</td><td>${esc(r.qty)}</td></tr>`).join(""):"<tr><td colspan='3'>No hay productos.</td></tr>")+
     "</tbody></table>";
+  applyColumnWidths($("stockTable").querySelector("table"),"stock",["Código","Producto","Cantidad total"]);
   message("stockStatus",res.rows.length+" productos consolidados.");
 }
 $("printStockBtn").onclick=()=>{
@@ -1043,6 +1101,65 @@ $("printStockBtn").onclick=()=>{
 function widgetDefaults() {
   return {id:uid(),title:"Nuevo panel",type:"metric",tab:"dashboard",sheet:0,category:"",value:"",size:"6"};
 }
+function columnWidthTargets() {
+  const targets=[
+    {key:"inventory",label:"Inicio — Inventario general",cols:["Producto","Código","Stock total","Trenque Lauquen","Consignación","En fabricación","Embarques por fecha"]},
+    {key:`records:${book.active}`,label:`Registros — ${sheet().name||"Hoja activa"}`,cols:columns(sheet().rows).concat(["Acciones"])},
+    {key:"stock",label:"Stock actual",cols:["Código","Producto","Cantidad total"]}
+  ];
+  book.widgets.filter(w=>w.type==="table").forEach(w=>targets.push({key:`widget:${w.id}`,label:`${(book.customTabs.find(t=>t.id===w.tab)||{label:book.tabLabels[w.tab]||w.tab}).label} — ${w.title||"Tabla"}`,cols:columns(activeRows(w.sheet))}));
+  return targets.filter(t=>t.cols.length);
+}
+function renderColumnWidthTargets() {
+  const select=$("columnWidthTarget"); if(!select)return;
+  const old=select.value,targets=columnWidthTargets();
+  select.innerHTML=targets.map(t=>`<option value="${esc(t.key)}">${esc(t.label)}</option>`).join("");
+  if(targets.some(t=>t.key===old))select.value=old;
+}
+function renderColumnWidthEditor() {
+  const el=$("columnWidthEditor"),select=$("columnWidthTarget"); if(!el||!select)return;
+  const target=columnWidthTargets().find(t=>t.key===select.value)||columnWidthTargets()[0];
+  if(!target){el.innerHTML='<p class="muted">No hay columnas disponibles para configurar todavía.</p>';return;}
+  const saved=book.design.columnWidths||{}; const widths=saved[target.key]||{};
+  el.innerHTML=target.cols.map((col,i)=>`<div><label>${esc(col)}</label><input type="number" min="40" max="900" step="10" data-width-col="${esc(col)}" value="${Number(widths[col])||180}" aria-label="Ancho de ${esc(col)} en píxeles"><small class="muted">Ancho en px</small></div>`).join("");
+  el.querySelectorAll("[data-width-col]").forEach(input=>input.oninput=()=>{
+    book.design.columnWidths=book.design.columnWidths||{};
+    book.design.columnWidths[target.key]=book.design.columnWidths[target.key]||{};
+    const n=Number(input.value); if(n>=40&&n<=900)book.design.columnWidths[target.key][input.dataset.widthCol]=n;
+    previewColumnWidths();
+  });
+}
+function applyColumnWidths(table,key,cols) {
+  if(!table)return;
+  table.dataset.widthKey=key;
+  const widths=book.design?.columnWidths?.[key]||{};
+  const any=cols.some(c=>Number(widths[c])>=40);
+  table.style.tableLayout=any?"fixed":"auto";
+  let cg=table.querySelector("colgroup"); if(cg)cg.remove();
+  cg=document.createElement("colgroup");
+  cols.forEach(col=>{const c=document.createElement("col");const w=Number(widths[col]);if(w>=40&&w<=900)c.style.width=w+"px";cg.appendChild(c);});
+  table.insertBefore(cg,table.firstChild);
+  table.querySelectorAll("th,td").forEach(cell=>{cell.style.overflowWrap="anywhere";cell.style.minWidth="0";});
+}
+function previewColumnWidths() {
+  document.querySelectorAll("table[data-width-key]").forEach(table=>{
+    const key=table.dataset.widthKey;
+    const cols=Array.from(table.querySelectorAll("thead th")).map(th=>th.textContent.trim());
+    applyColumnWidths(table,key,cols);
+  });
+}
+$("columnWidthTarget").onchange=renderColumnWidthEditor;
+$("saveColumnWidthsBtn").onclick=async()=>{
+  try {await saveBook();previewColumnWidths();message("columnWidthStatus","Anchos de columnas guardados.");}
+  catch(e){message("columnWidthStatus",e.message||"No se pudieron guardar los anchos.",true);}
+};
+$("resetColumnWidthsBtn").onclick=()=>{
+  const key=$("columnWidthTarget").value;if(!key)return;
+  if(!confirm("¿Restablecer los anchos de esta tabla?"))return;
+  if(book.design.columnWidths)delete book.design.columnWidths[key];
+  renderColumnWidthEditor();previewColumnWidths();message("columnWidthStatus","Anchos predeterminados aplicados. Guardá para conservarlos.");
+};
+
 function renderWidgetEditor() {
   const el=$("widgetEditor");
   if(!book.widgets.length) {el.innerHTML="<p class='muted'>Todavía no hay paneles. Presioná Agregar panel.</p>";return;}
@@ -1100,8 +1217,9 @@ function renderWidgetsInto(containerId,tabId) {
       panel.insertAdjacentHTML("beforeend",`<div class="stat"><span class="muted">${esc(w.value||"Cantidad de registros")}</span><strong>${esc(value)}</strong></div>`);
     } else if(w.type==="table") {
       const cols=columns(rows);
-      panel.insertAdjacentHTML("beforeend",'<div class="table-wrap"><table><thead><tr>'+cols.map(c=>`<th>${esc(c)}</th>`).join("")+'</tr></thead><tbody>'+
+      panel.insertAdjacentHTML("beforeend",`<div class="table-wrap"><table data-width-key="widget:${esc(w.id)}"><thead><tr>`+cols.map(c=>`<th>${esc(c)}</th>`).join("")+'</tr></thead><tbody>'+
         rows.slice(0,100).map(r=>"<tr>"+cols.map(c=>`<td>${esc(r[c]??"")}</td>`).join("")+"</tr>").join("")+"</tbody></table></div>");
+      applyColumnWidths(panel.querySelector("table"),`widget:${w.id}`,cols);
     } else {
       const canvas=document.createElement("canvas");panel.appendChild(canvas);
       if(window.Chart) {
@@ -1208,6 +1326,7 @@ function readDesign() {
   d.width=Math.min(2200,Math.max(700,d.width||1600));
   d.radius=Math.min(40,Math.max(0,d.radius||0));
   d.logos=book.design.logos||[];
+  d.columnWidths=book.design.columnWidths||{};
   return d;
 }
 function applyDesign() {
