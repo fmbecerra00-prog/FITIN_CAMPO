@@ -1055,37 +1055,29 @@ $("resetDesignBtn").onclick=()=>{
 ["dTitle","dSubtitle","dLoginTitle","dLoginSubtitle","dDashboardHeading","dRecordsHeading","dStockHeading","dFont","dFontSize","dTitleSize","dWidth","dRadius"].forEach(id=>$(id).addEventListener("input",previewDesign));
 
 /* LOGOS E IMÁGENES */
-let logoDrag=null;
-function renderLogos() {
-  document.querySelectorAll(".logo-object").forEach(el=>el.remove());
-  (book.design.logos||[]).forEach(l=>{
-    const img=document.createElement("img");
-    img.className="logo-object";img.alt=l.name||"Logo";img.src=l.data;
-    img.style.width=(Number(l.width)||150)+"px";
-    img.style.left=(Number(l.x)||0)+"vw";img.style.top=(Number(l.y)||0)+"vh";
-    if(l.visible===false)img.classList.add("hidden");
 
-    img.addEventListener("pointerdown",e=>{
-      if(!currentUser)return;
-      logoDrag={id:l.id,dx:e.clientX-img.getBoundingClientRect().left,dy:e.clientY-img.getBoundingClientRect().top};
-      img.setPointerCapture(e.pointerId);img.classList.add("selected");e.preventDefault();
-    });
-    img.addEventListener("pointermove",e=>{
-      if(!logoDrag||logoDrag.id!==l.id)return;
-      const maxX=Math.max(0,window.innerWidth-img.offsetWidth);
-      const maxY=Math.max(0,window.innerHeight-img.offsetHeight);
-      const x=Math.max(0,Math.min(maxX,e.clientX-logoDrag.dx));
-      const y=Math.max(0,Math.min(maxY,e.clientY-logoDrag.dy));
-      img.style.left=(x/window.innerWidth*100)+"vw";
-      img.style.top=(y/window.innerHeight*100)+"vh";
-      l.x=+(x/window.innerWidth*100).toFixed(2);
-      l.y=+(y/window.innerHeight*100).toFixed(2);
-    });
-    const finish=()=>{logoDrag=null;img.classList.remove("selected");};
-    img.addEventListener("pointerup",finish);
-    img.addEventListener("pointercancel",finish);
+function renderLogos() {
+  document.querySelectorAll(".logo-object").forEach(el => el.remove());
+
+  (book.design.logos || []).forEach(l => {
+    const img = document.createElement("img");
+    img.className = "logo-object";
+    img.alt = l.name || "Logo";
+    img.src = l.data;
+    img.style.width = (Number(l.width) || 150) + "px";
+    img.style.left = (Number(l.x) || 0) + "vw";
+    img.style.top = (Number(l.y) || 0) + "vh";
+    img.style.position = "fixed";
+    img.style.cursor = "default";
+    img.style.touchAction = "auto";
+    img.draggable = false;
+
+    if (l.visible === false) img.classList.add("hidden");
+
     document.body.appendChild(img);
   });
+}
+
 
   $("logoList").innerHTML=(book.design.logos||[]).map(l=>`<div class="editor-row">
     <div><label>Nombre</label><input data-logo-name="${l.id}" value="${esc(l.name||"Logo")}"></div>
