@@ -135,6 +135,11 @@ footer {text-align:center;color:var(--muted);padding:22px}
 
 <main class="container">
   <nav id="tabs" class="tabs"></nav>
+  <div class="toolbar no-print" id="globalSheetToolbar" style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:-8px">
+    <label for="globalSheetSelect"><strong>Hoja de trabajo:</strong></label>
+    <select id="globalSheetSelect" style="max-width:320px;min-width:180px"></select>
+    <span id="globalSheetHint" class="muted">Elegí la hoja activa para trabajar con sus registros.</span>
+  </div>
 
   <section id="dashboardTab">
     <div class="panel">
@@ -690,8 +695,11 @@ function showTab(id) {
 
 /* REGISTROS */
 function renderSheetSelect() {
-  $("sheetSelect").innerHTML=book.sheets.map((s,i)=>`<option value="${i}">${esc(s.name)}</option>`).join("");
+  const options=book.sheets.map((s,i)=>`<option value="${i}">${esc(s.name)}</option>`).join("");
+  $("sheetSelect").innerHTML=options;
   $("sheetSelect").value=String(book.active);
+  const global=$("globalSheetSelect");
+  if(global) { global.innerHTML=options; global.value=String(book.active); }
 }
 function renderAll() {
   renderSheetSelect();
@@ -701,10 +709,18 @@ function renderAll() {
   setupStockControls();
   renderDashboard();
 }
-$("sheetSelect").onchange=()=>{
-  book.active=Number($("sheetSelect").value);
-  renderRecords();renderDashboard();
+function setActiveSheet(index) {
+  book.active=Math.min(Math.max(0,Number(index)||0),book.sheets.length-1);
+  renderSheetSelect();
+  renderRecords();
+  renderDashboard();
   if($("designTab")&&!$("designTab").classList.contains("hidden")){renderColumnWidthTargets();renderColumnWidthEditor();}
+}
+$("sheetSelect").onchange=()=>setActiveSheet($("sheetSelect").value);
+$("globalSheetSelect").onchange=()=>{
+  setActiveSheet($("globalSheetSelect").value);
+  if(activeTab==="dashboard") { setupCountControls(); setupProductControls(); renderDashboard(); renderWidgetsInto("dashboardWidgets","dashboard"); }
+  else if(activeTab==="stock") { setupStockControls(); renderStock(); }
 };
 function renderRecords() {
   const s=sheet(),cols=columns(s.rows),q=$("searchInput").value.trim().toLowerCase();
@@ -781,30 +797,48 @@ $("excelFile").onchange=async e=>{
   const f=e.target.files[0];if(!f)return;
   try {
     const wb=XLSX.read(await f.arrayBuffer(),{type:"array"});
-    const matrix=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:"",raw:false});
-    if(!matrix.length) throw new Error("El archivo no contiene filas para importar.");
-    const rawHeaders=matrix[0].map(v=>String(v??"").trim());
-    const usedHeaders=new Set();
-    const headers=rawHeaders.map((h,i)=>{
-      let name=h||`Columna ${i+1}`,base=name,n=2;
-      while(usedHeaders.has(name)) name=`${base} (${n++})`;
-      usedHeaders.add(name);return name;
-    });
-    const rows=matrix.slice(1).filter(row=>row.some(v=>String(v??"").trim()!=="")).map(row=>{
-      const obj={};headers.forEach((h,i)=>obj[h]=row[i]??"");return obj;
-    });
-    const name=f.name.replace(/\.(xlsx|xls|csv)$/i,"");
-    let i=book.sheets.findIndex(s=>s.name===name);
-    if(i>=0) {
-      if(!confirm("Ya existe esa hoja. ¿Reemplazar sus registros?")) return;
-      book.sheets[i].rows=rows;
-    } else {
-      book.sheets.push({name,rows});i=book.sheets.length-1;
+    if(!wb.SheetNames || !wb.SheetNames.length) throw new Error("El archivo no contiene hojas para importar.");
+    const fileBase=f.name.replace(/\.(xlsx|xls|csv)$/i,"").trim()||"Importación";
+    const imported=[];
+    const worksheetNames=(f.name.toLowerCase().endsWith(".csv") ? [wb.SheetNames[0]] : wb.SheetNames);
+    for(const worksheetName of worksheetNames) {
+      const ws=wb.Sheets[worksheetName];
+      if(!ws) continue;
+      const matrix=XLSX.utils.sheet_to_json(ws,{header:1,defval:"",raw:false});
+      if(!matrix.length) {
+        imported.push({name:worksheetNames.length===1?fileBase:`${fileBase} — ${worksheetName}`,rows:[]});
+        continue;
+      }
+      const rawHeaders=matrix[0].map(v=>String(v??"").trim());
+      const usedHeaders=new Set();
+      const headers=rawHeaders.map((h,i)=>{
+        let name=h||`Columna ${i+1}`,base=name,n=2;
+        while(usedHeaders.has(name)) name=`${base} (${n++})`;
+        usedHeaders.add(name);return name;
+      });
+      const rows=matrix.slice(1).filter(row=>row.some(v=>String(v??"").trim()!=="")).map(row=>{
+        const obj={};headers.forEach((h,i)=>obj[h]=row[i]??"");return obj;
+      });
+      const sheetName=worksheetNames.length===1?fileBase:`${fileBase} — ${worksheetName}`;
+      imported.push({name:sheetName,rows});
     }
-    book.active=i;renderAll();
-    message("recordsStatus","Excel importado. Presioná Guardar registros para conservar los cambios.");
+    if(!imported.length) throw new Error("No se encontraron hojas válidas para importar.");
+    const collisions=imported.filter(item=>book.sheets.some(existing=>existing.name===item.name));
+    if(collisions.length && !confirm(`Ya existen ${collisions.length} hoja(s) con el mismo nombre (${collisions.map(x=>x.name).join(", ")}). ¿Reemplazar esas hojas y agregar las demás?`)) return;
+    let firstImportedIndex=-1;
+    for(const item of imported) {
+      let i=book.sheets.findIndex(existing=>existing.name===item.name);
+      if(i>=0) book.sheets[i].rows=item.rows;
+      else { i=book.sheets.length; book.sheets.push(item); }
+      if(firstImportedIndex<0) firstImportedIndex=i;
+    }
+    book.active=firstImportedIndex>=0?firstImportedIndex:0;
+    // Keep each page's sheet selectors in range after adding all workbook tabs.
+    renderAll();
+    renderSheetSelect();
+    message("recordsStatus",`${imported.length} hoja(s) importada(s) correctamente. Revisá las hojas desde “Hoja de trabajo” o desde el selector de Registros y presioná Guardar registros para conservar los cambios.`);
   } catch(err) {
-    message("recordsStatus","Error al importar: "+err.message,true);
+    message("recordsStatus","Error al importar: "+(err?.message||err),true);
   } finally {e.target.value="";}
 };
 $("exportBtn").onclick=()=>{
