@@ -4,56 +4,40 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FITIN CAMPO | Gestión de stock</title>
-
+<title>FITIN CAMPO</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
-
 <style>
-:root{
- --primary:#3157d5;--header:#18243a;--bg:#f3f5fa;--card:#fff;
- --text:#202b3c;--muted:#6b7280;--border:#dfe4ed;
- --radius:14px;--font:Arial,sans-serif;--font-size:14px;
- --content-width:1600px;--gap:16px;
-}
+:root{--primary:#3157d5;--header:#18243a;--bg:#f3f5fa;--card:#fff;--text:#202b3c;--muted:#6b7280;--border:#dfe4ed;--radius:14px;--font:Arial,sans-serif;--font-size:14px;--content-width:1600px;--gap:16px}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);
- font-family:var(--font);font-size:var(--font-size)}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font);font-size:var(--font-size)}
 button,input,select,textarea{font:inherit}
-button{border:0;border-radius:8px;background:var(--primary);color:white;
- padding:10px 14px;cursor:pointer}
+button{border:0;border-radius:8px;background:var(--primary);color:white;padding:10px 14px;cursor:pointer}
 button:hover{filter:brightness(.94)}
 button.secondary{background:var(--card);color:var(--text);border:1px solid var(--border)}
 button.danger{background:#bd3545}
-input,select,textarea{width:100%;padding:9px;border:1px solid var(--border);
- border-radius:8px;background:var(--card);color:var(--text)}
+input,select,textarea{width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text)}
 label{display:block;font-weight:600;margin:8px 0 5px}
 small,.muted{color:var(--muted)}
-hr{border:0;border-top:1px solid var(--border);margin:20px 0}
-#login{max-width:420px;margin:8vh auto;background:var(--card);
- padding:28px;border-radius:var(--radius);box-shadow:0 5px 24px #17233a12}
+#login{max-width:420px;margin:8vh auto;background:var(--card);padding:28px;border-radius:var(--radius);box-shadow:0 5px 24px #17233a12}
 #app{display:none}
-header{background:var(--header);color:white;padding:20px}
-.header-inner{max-width:var(--content-width);margin:auto;display:flex;
- justify-content:space-between;align-items:center;gap:15px;flex-wrap:wrap}
+header{background:var(--header);color:white;padding:20px;position:relative}
+.header-inner{max-width:var(--content-width);margin:auto;display:flex;justify-content:space-between;align-items:center;gap:15px;flex-wrap:wrap}
 header h1{margin:0;font-size:28px}
 header p{margin:6px 0 0;opacity:.8}
 .container{max-width:var(--content-width);margin:auto;padding:22px}
 .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
 .tabs button{background:#e5eaf5;color:#25324b}
 .tabs button.active{background:var(--primary);color:#fff}
-.panel{background:var(--card);border:1px solid var(--border);
- border-radius:var(--radius);padding:20px;margin-bottom:var(--gap);
- min-width:0;box-shadow:0 4px 18px #17233a0b}
+.panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:var(--gap);min-width:0;box-shadow:0 4px 18px #17233a0b}
 .panel h2,.panel h3{margin-top:0}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:var(--gap)}
-.stat{background:var(--card);border:1px solid var(--border);
- border-radius:var(--radius);padding:18px;min-width:0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:var(--gap)}
+.stat{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;min-width:0}
 .stat strong{display:block;font-size:27px;margin-top:9px;overflow-wrap:anywhere}
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0}
 .toolbar input{flex:1;min-width:160px}
-.design-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+.design-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
 .table-wrap{overflow:auto;max-width:100%;border:1px solid var(--border);border-radius:10px}
 table{width:100%;border-collapse:collapse;background:var(--card)}
 th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--border)}
@@ -64,38 +48,28 @@ td[contenteditable="true"]:focus{outline:2px solid var(--primary)}
 .hidden{display:none!important}
 .color-field{display:flex;gap:8px;align-items:center}
 .color-field input[type=color]{width:50px;height:38px;padding:2px}
-.check{display:flex;align-items:center;gap:8px}
-.check input{width:auto}
 .widget-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:var(--gap)}
 .widget{grid-column:span 6;min-width:0}
-.widget.span12{grid-column:span 12}
-.widget.span4{grid-column:span 4}
+.widget.span12{grid-column:span 12}.widget.span4{grid-column:span 4}
 .widget .panel{height:100%;margin:0}
 .widget canvas{max-height:340px}
-.widget-head{display:flex;justify-content:space-between;gap:10px;align-items:start}
-.widget-head h3{margin:0 0 12px}
-.widget-head button{padding:5px 8px}
-.editor-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;
- border:1px solid var(--border);border-radius:10px;padding:12px;margin:10px 0}
+.editor-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:10px;border:1px solid var(--border);border-radius:10px;padding:12px;margin:10px 0}
+.logo-object{position:fixed;z-index:1000;object-fit:contain;max-width:none;cursor:move;touch-action:none;user-select:none}
+.logo-object.selected{outline:2px dashed var(--primary)}
+.logo-tools{border:1px dashed var(--border);padding:12px;border-radius:10px;margin:12px 0}
+#productCard .stat{margin-bottom:10px}
 #stockPrintHeader{display:none}
 footer{text-align:center;color:var(--muted);padding:22px}
-@media(max-width:760px){
- .container{padding:12px}.panel{padding:14px}
- .widget,.widget.span4{grid-column:span 12}
- header h1{font-size:23px}
-}
+@media(max-width:760px){.container{padding:12px}.panel{padding:14px}.widget,.widget.span4{grid-column:span 12}header h1{font-size:23px}}
 @media print{
  body{background:#fff;color:#000;font-size:10pt}
  body *{visibility:hidden!important}
  #stockPrintArea,#stockPrintArea *{visibility:visible!important}
- #stockPrintArea{display:block!important;position:absolute;left:0;top:0;width:100%;
-  padding:0;color:#000;background:#fff}
+ #stockPrintArea{display:block!important;position:absolute;left:0;top:0;width:100%;padding:0;color:#000;background:#fff}
  #stockPrintHeader{display:block!important;margin-bottom:18px}
  #stockPrintArea table{width:100%;border-collapse:collapse}
- #stockPrintArea th,#stockPrintArea td{background:#fff!important;color:#000!important;
-  border:1px solid #888;padding:6px}
- #stockPrintArea h1{font-size:20pt}
- #stockPrintArea h2{font-size:14pt}
+ #stockPrintArea th,#stockPrintArea td{background:#fff!important;color:#000!important;border:1px solid #888;padding:6px}
+ #stockPrintArea h1{font-size:20pt}#stockPrintArea h2{font-size:14pt}
  .no-print{display:none!important}
  @page{size:A4 portrait;margin:15mm}
 }
@@ -107,9 +81,9 @@ footer{text-align:center;color:var(--muted);padding:22px}
  <h1 id="loginTitle">FITIN CAMPO</h1>
  <p id="loginSubtitle" class="muted">Gestión de productos y stock</p>
  <form id="loginForm">
-  <label for="email">Correo electrónico</label>
+  <label>Correo electrónico</label>
   <input id="email" type="email" autocomplete="username" required>
-  <label for="password">Contraseña</label>
+  <label>Contraseña</label>
   <input id="password" type="password" autocomplete="current-password" required>
   <button style="width:100%;margin-top:16px">Iniciar sesión</button>
  </form>
@@ -120,14 +94,8 @@ footer{text-align:center;color:var(--muted);padding:22px}
 <section id="app">
 <header>
  <div class="header-inner">
-  <div>
-   <h1 id="pageTitle">FITIN CAMPO</h1>
-   <p id="pageSubtitle">Gestión de productos y stock</p>
-  </div>
-  <div class="toolbar">
-   <span id="userEmail"></span>
-   <button class="secondary" id="logoutBtn">Cerrar sesión</button>
-  </div>
+  <div><h1 id="pageTitle">FITIN CAMPO</h1><p id="pageSubtitle">Gestión de productos y stock</p></div>
+  <div class="toolbar"><span id="userEmail"></span><button class="secondary" id="logoutBtn">Cerrar sesión</button></div>
  </div>
 </header>
 
@@ -137,8 +105,31 @@ footer{text-align:center;color:var(--muted);padding:22px}
  <section id="dashboardTab">
   <div class="panel">
    <h2 id="dashboardHeading">Panel principal</h2>
-   <p id="dashboardDescription" class="muted">Resumen de los registros.</p>
+   <p class="muted">Los indicadores se pueden configurar desde Diseño de página.</p>
+   <div class="design-grid no-print">
+    <div><label>Hoja de origen de los recuentos</label><select id="countSheet"></select></div>
+    <div><label>Columna para contar</label><select id="countColumn"></select></div>
+    <div><label>Tipo de recuento</label><select id="countType"><option value="rows">Cantidad de registros</option><option value="unique">Valores únicos</option><option value="sum">Suma de columna numérica</option></select></div>
+    <div><label>Columna numérica (para suma)</label><select id="countSumColumn"></select></div>
+   </div>
+   <div class="toolbar no-print"><button id="saveCountConfig">Guardar configuración de recuentos</button></div>
+   <p id="countStatus" class="status" role="status"></p>
    <div id="defaultStats" class="grid"></div>
+  </div>
+  <div class="panel">
+   <h2>Buscar producto</h2>
+   <div class="design-grid no-print">
+    <div><label>Hoja de productos</label><select id="productSheet"></select></div>
+    <div><label>Producto</label><select id="productFilter"></select></div>
+    <div><label>Columna de producto</label><select id="productNameCol"></select></div>
+    <div><label>Columna de código</label><select id="productCodeCol"></select></div>
+    <div><label>Columna de stock/cantidad</label><select id="productStockCol"></select></div>
+    <div><label>Columna de cliente</label><select id="productClientCol"></select></div>
+    <div><label>Columna de consignación</label><select id="productConsignCol"></select></div>
+   </div>
+   <div class="toolbar no-print"><button id="refreshProducts">Actualizar listado</button><button class="secondary" id="saveProductConfig">Guardar configuración del buscador</button></div>
+   <p id="productStatus" class="status" role="status"></p>
+   <div id="productCard" class="grid"><p class="muted">Seleccioná un producto para ver sus datos.</p></div>
   </div>
   <div id="dashboardWidgets" class="widget-grid"></div>
  </section>
@@ -146,23 +137,18 @@ footer{text-align:center;color:var(--muted);padding:22px}
  <section id="recordsTab" class="hidden">
   <div class="panel">
    <h2 id="recordsHeading">Registros</h2>
-   <p id="recordsDescription" class="muted">Importá y administrá los datos.</p>
    <div class="toolbar">
-    <label for="sheetSelect">Hoja:</label>
-    <select id="sheetSelect" style="max-width:250px"></select>
+    <label>Hoja:</label><select id="sheetSelect" style="max-width:250px"></select>
     <button id="newSheetBtn" class="secondary">Nueva hoja</button>
     <button id="renameSheetBtn" class="secondary">Renombrar hoja</button>
     <button id="deleteSheetBtn" class="danger">Eliminar hoja</button>
    </div>
    <div class="toolbar">
     <input id="searchInput" placeholder="Buscar registros...">
-    <button id="addRowBtn">Agregar fila</button>
-    <button id="addColumnBtn" class="secondary">Agregar columna</button>
+    <button id="addRowBtn">Agregar fila</button><button id="addColumnBtn" class="secondary">Agregar columna</button>
    </div>
    <div class="toolbar">
-    <button id="importBtn">Importar Excel</button>
-    <button id="exportBtn" class="secondary">Exportar Excel</button>
-    <button id="saveRecordsBtn">Guardar registros</button>
+    <button id="importBtn">Importar Excel</button><button id="exportBtn" class="secondary">Exportar Excel</button><button id="saveRecordsBtn">Guardar registros</button>
     <input id="excelFile" type="file" accept=".xlsx,.xls,.csv" class="hidden">
    </div>
    <p id="recordsStatus" class="status" role="status"></p>
@@ -172,109 +158,81 @@ footer{text-align:center;color:var(--muted);padding:22px}
 
  <section id="stockTab" class="hidden">
   <div id="stockPrintArea">
-   <div id="stockPrintHeader">
-    <h1 id="printCompany">FITIN CAMPO</h1>
-    <h2 id="printTitle">Stock actual</h2>
-    <p id="printDate"></p>
-   </div>
+   <div id="stockPrintHeader"><h1 id="printCompany">FITIN CAMPO</h1><h2 id="printTitle">Stock actual</h2><p id="printDate"></p></div>
    <div class="panel no-print">
     <h2 id="stockHeading">Stock actual</h2>
-    <p class="muted">Consolidado por código y producto, sumando las cantidades de los registros.</p>
+    <p class="muted">Agrupa por código y producto y suma las cantidades registradas.</p>
     <div class="design-grid">
-     <div><label for="stockSheetSelect">Hoja de origen</label><select id="stockSheetSelect"></select></div>
-     <div><label for="stockProductCol">Columna: producto</label><select id="stockProductCol"></select></div>
-     <div><label for="stockCodeCol">Columna: código</label><select id="stockCodeCol"></select></div>
-     <div><label for="stockQtyCol">Columna: cantidad</label><select id="stockQtyCol"></select></div>
+     <div><label>Hoja de origen</label><select id="stockSheetSelect"></select></div>
+     <div><label>Columna: producto</label><select id="stockProductCol"></select></div>
+     <div><label>Columna: código</label><select id="stockCodeCol"></select></div>
+     <div><label>Columna: cantidad</label><select id="stockQtyCol"></select></div>
     </div>
-    <div class="toolbar">
-     <button id="refreshStockBtn">Actualizar stock</button>
-     <button id="printStockBtn">Imprimir / Guardar PDF</button>
-    </div>
+    <div class="toolbar"><button id="refreshStockBtn">Actualizar stock</button><button id="printStockBtn">Imprimir / Guardar PDF</button></div>
     <p id="stockStatus" class="status" role="status"></p>
    </div>
-   <div class="panel">
-    <div class="grid no-print" id="stockStats"></div>
-    <h2 class="no-print">Listado consolidado</h2>
-    <p class="no-print muted">La cantidad total suma todos los registros con el mismo código y producto.</p>
-    <div id="stockTable" class="table-wrap"></div>
-   </div>
+   <div class="panel"><div class="grid no-print" id="stockStats"></div><h2 class="no-print">Listado consolidado</h2><div id="stockTable" class="table-wrap"></div></div>
   </div>
  </section>
 
  <section id="designTab" class="hidden">
   <div class="panel">
-   <h2>Editor de diseño y pestañas</h2>
-   <p class="muted">Los cambios se guardan en Supabase. La estructura de paneles y pestañas se comparte entre usuarios.</p>
+   <h2>Editor de diseño y contenido</h2>
+   <p class="muted">Guardá los cambios para compartir la configuración con los usuarios autorizados.</p>
 
-   <h3>1. Títulos de las pestañas</h3>
-   <p class="muted">Podés cambiar el texto visible de cada pestaña.</p>
-   <div id="tabTitleEditor"></div>
-   <div class="toolbar">
-    <button id="saveTabTitlesBtn">Guardar títulos</button>
-    <button id="addTabBtn">Crear pestaña nueva</button>
-   </div>
+   <h3>1. Títulos de pestañas</h3><div id="tabTitleEditor"></div>
+   <div class="toolbar"><button id="saveTabTitlesBtn">Guardar títulos</button><button id="addTabBtn">Crear pestaña nueva</button></div>
 
-   <hr>
-   <h3>2. Agregar y configurar paneles</h3>
-   <p>Los paneles pueden mostrar indicadores, tablas de datos o gráficos de barras y torta.</p>
-   <div class="toolbar">
-    <button id="addWidgetBtn">+ Agregar panel</button>
-   </div>
-   <div id="widgetEditor"></div>
+   <hr><h3>2. Paneles, indicadores, tablas y gráficos</h3>
+   <p class="muted">Los paneles se pueden ubicar en Inicio o en pestañas creadas por vos.</p>
+   <button id="addWidgetBtn">+ Agregar panel</button><div id="widgetEditor"></div>
 
-   <hr>
-   <h3>3. Títulos y textos generales</h3>
+   <hr><h3>3. Títulos generales</h3>
    <div class="design-grid">
-    <div><label for="dTitle">Título principal</label><input id="dTitle"></div>
-    <div><label for="dSubtitle">Subtítulo</label><input id="dSubtitle"></div>
-    <div><label for="dLoginTitle">Título del acceso</label><input id="dLoginTitle"></div>
-    <div><label for="dLoginSubtitle">Texto del acceso</label><input id="dLoginSubtitle"></div>
-    <div><label for="dDashboardHeading">Título del inicio</label><input id="dDashboardHeading"></div>
-    <div><label for="dRecordsHeading">Título de registros</label><input id="dRecordsHeading"></div>
-    <div><label for="dStockHeading">Título del stock actual</label><input id="dStockHeading"></div>
+    <div><label>Título principal</label><input id="dTitle"></div>
+    <div><label>Subtítulo</label><input id="dSubtitle"></div>
+    <div><label>Título del acceso</label><input id="dLoginTitle"></div>
+    <div><label>Texto del acceso</label><input id="dLoginSubtitle"></div>
+    <div><label>Título de Inicio</label><input id="dDashboardHeading"></div>
+    <div><label>Título de Registros</label><input id="dRecordsHeading"></div>
+    <div><label>Título de Stock actual</label><input id="dStockHeading"></div>
    </div>
 
-   <hr>
-   <h3>4. Colores</h3>
-   <div id="colorControls" class="design-grid"></div>
+   <hr><h3>4. Colores</h3><div id="colorControls" class="design-grid"></div>
 
-   <hr>
-   <h3>5. Tipografía y formato</h3>
+   <hr><h3>5. Tipografía y formato</h3>
    <div class="design-grid">
-    <div><label for="dFont">Fuente</label>
-     <select id="dFont">
-      <option value="Arial,sans-serif">Arial</option>
-      <option value="'Segoe UI',sans-serif">Segoe UI</option>
-      <option value="Verdana,sans-serif">Verdana</option>
-      <option value="Tahoma,sans-serif">Tahoma</option>
-      <option value="Georgia,serif">Georgia</option>
-      <option value="'Trebuchet MS',sans-serif">Trebuchet MS</option>
-     </select>
-    </div>
-    <div><label for="dFontSize">Tamaño del texto (px)</label><input id="dFontSize" type="number" min="11" max="24"></div>
-    <div><label for="dTitleSize">Tamaño del título (px)</label><input id="dTitleSize" type="number" min="18" max="48"></div>
-    <div><label for="dWidth">Ancho máximo (px)</label><input id="dWidth" type="number" min="700" max="2200" step="50"></div>
-    <div><label for="dRadius">Redondeo (px)</label><input id="dRadius" type="number" min="0" max="40"></div>
-    <div><label for="dGap">Separación entre paneles (px)</label><input id="dGap" type="number" min="4" max="40"></div>
+    <div><label>Fuente</label><select id="dFont"><option value="Arial,sans-serif">Arial</option><option value="'Segoe UI',sans-serif">Segoe UI</option><option value="Verdana,sans-serif">Verdana</option><option value="Tahoma,sans-serif">Tahoma</option><option value="Georgia,serif">Georgia</option><option value="'Trebuchet MS',sans-serif">Trebuchet MS</option></select></div>
+    <div><label>Tamaño del texto (px)</label><input id="dFontSize" type="number" min="11" max="24"></div>
+    <div><label>Tamaño del título (px)</label><input id="dTitleSize" type="number" min="18" max="48"></div>
+    <div><label>Ancho máximo (px)</label><input id="dWidth" type="number" min="700" max="2200" step="50"></div>
+    <div><label>Redondeo (px)</label><input id="dRadius" type="number" min="0" max="40"></div>
+    <div><label>Separación (px)</label><input id="dGap" type="number" min="4" max="40"></div>
    </div>
-   <div class="toolbar">
-    <button id="previewDesignBtn" class="secondary">Vista previa</button>
-    <button id="saveDesignBtn">Guardar diseño completo</button>
-    <button id="resetDesignBtn" class="secondary">Restablecer diseño</button>
+
+   <hr><h3>6. Logos e imágenes movibles</h3>
+   <p class="muted">Subí una imagen, elegí su tamaño y arrastrala por la pantalla. Las imágenes se guardan en la configuración compartida.</p>
+   <div class="design-grid">
+    <div><label>Imagen (PNG, JPG o WebP; máximo 500 KB)</label><input id="logoFile" type="file" accept="image/png,image/jpeg,image/webp"></div>
+    <div><label>Nombre de la imagen</label><input id="logoName" placeholder="Logo de la empresa"></div>
+    <div><label>Ancho (px)</label><input id="logoWidth" type="number" min="20" max="700" value="150"></div>
+    <div><label>Posición horizontal (%)</label><input id="logoX" type="number" min="0" max="95" value="5"></div>
+    <div><label>Posición vertical (%)</label><input id="logoY" type="number" min="0" max="95" value="5"></div>
    </div>
+   <div class="toolbar"><button id="addLogoBtn">Agregar imagen</button><button class="secondary" id="showLogosBtn">Mostrar imágenes</button><button class="secondary" id="hideLogosBtn">Ocultar imágenes</button><button id="saveLogosBtn">Guardar imágenes</button></div>
+   <div id="logoList"></div>
+   <p class="muted">Para mover una imagen: seleccioná el objeto en la página y arrastralo con el mouse. También podés ajustar sus coordenadas desde el editor.</p>
+
+   <div class="toolbar"><button id="previewDesignBtn" class="secondary">Vista previa</button><button id="saveDesignBtn">Guardar diseño completo</button><button id="resetDesignBtn" class="secondary">Restablecer colores</button></div>
    <p id="designStatus" class="status" role="status"></p>
   </div>
  </section>
 
  <section id="customTab" class="hidden">
   <div class="panel">
-   <div class="toolbar">
-    <h2 id="customHeading" style="margin:0;flex:1">Pestaña</h2>
-    <button id="renameCurrentTabBtn" class="secondary">Renombrar</button>
-    <button id="deleteCurrentTabBtn" class="danger">Eliminar pestaña</button>
-   </div>
+   <div class="toolbar"><h2 id="customHeading" style="margin:0;flex:1">Pestaña</h2><button id="renameCurrentTabBtn" class="secondary">Renombrar</button><button id="deleteCurrentTabBtn" class="danger">Eliminar pestaña</button></div>
    <div id="customWidgets" class="widget-grid"></div>
-   <p class="muted">Para agregar contenido, usá Diseño de página → Agregar panel y seleccioná esta pestaña como destino.</p>
+   <p class="muted">Agregá contenido desde Diseño de página → Agregar panel y elegí esta pestaña como destino.</p>
   </div>
  </section>
 </main>
@@ -284,147 +242,93 @@ footer{text-align:center;color:var(--muted);padding:22px}
 <script>
 "use strict";
 
-/* CONFIGURACIÓN */
+/* CONFIGURACIÓN EXISTENTE DE SUPABASE */
 const SUPABASE_URL="https://jgyeckanfjrqdfvinoaj.supabase.co";
 const SUPABASE_KEY="sb_publishable_lLv-CsOrjj-weMWJgM2QHw_LNaiA4SW";
 const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
-
-const DEFAULT_DESIGN={
- title:"FITIN CAMPO",subtitle:"Gestión de productos y stock",
- loginTitle:"FITIN CAMPO",loginSubtitle:"Gestión de productos y stock",
- dashboardHeading:"Panel principal",recordsHeading:"Registros",stockHeading:"Stock actual",
- primary:"#3157d5",header:"#18243a",bg:"#f3f5fa",card:"#ffffff",
- text:"#202b3c",muted:"#6b7280",border:"#dfe4ed",
- font:"Arial,sans-serif",fontSize:14,titleSize:28,width:1600,radius:14,gap:16
-};
-const DEFAULT_LABELS={
- dashboard:"Inicio",records:"Registros",stock:"Stock actual",design:"Diseño de página"
-};
-const COLORS=[
- ["primary","Botones y color principal"],["header","Encabezado y tabla"],
- ["bg","Fondo de página"],["card","Fondo de paneles"],
- ["text","Texto principal"],["muted","Texto secundario"],["border","Bordes"]
-];
-
-let currentUser=null,busy=false,activeTab="dashboard";
-let book={
- sheets:[{name:"Registros",rows:[]}],active:0,
- design:{...DEFAULT_DESIGN},tabLabels:{...DEFAULT_LABELS},
- customTabs:[],widgets:[],stockConfig:{sheet:0,product:"",code:"",qty:""}
-};
 const $=id=>document.getElementById(id);
-const deepCopy=x=>JSON.parse(JSON.stringify(x));
-function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+const DEFAULT_DESIGN={title:"FITIN CAMPO",subtitle:"Gestión de productos y stock",loginTitle:"FITIN CAMPO",loginSubtitle:"Gestión de productos y stock",dashboardHeading:"Panel principal",recordsHeading:"Registros",stockHeading:"Stock actual",primary:"#3157d5",header:"#18243a",bg:"#f3f5fa",card:"#ffffff",text:"#202b3c",muted:"#6b7280",border:"#dfe4ed",font:"Arial,sans-serif",fontSize:14,titleSize:28,width:1600,radius:14,gap:16};
+const DEFAULT_LABELS={dashboard:"Inicio",records:"Registros",stock:"Stock actual",design:"Diseño de página"};
+const COLORS=[["primary","Botones y color principal"],["header","Encabezado y tablas"],["bg","Fondo"],["card","Fondo de paneles"],["text","Texto principal"],["muted","Texto secundario"],["border","Bordes"]];
+let currentUser=null,busy=false,activeTab="dashboard",logoDrag=null;
+let book={sheets:[{name:"Registros",rows:[]}],active:0,design:{...DEFAULT_DESIGN,logos:[]},tabLabels:{...DEFAULT_LABELS},customTabs:[],widgets:[],stockConfig:{sheet:0,product:"",code:"",qty:""},productConfig:{sheet:0,name:"",code:"",stock:"",client:"",consign:""},countConfig:{sheet:0,column:"",type:"rows",sumColumn:""}};
+
+const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function message(id,text,error=false){$(id).textContent=text;$(id).className="status "+(error?"error":"success");}
 function sheet(){return book.sheets[book.active]||book.sheets[0];}
-function columns(rows){const a=[];rows.forEach(r=>Object.keys(r||{}).forEach(k=>{if(!a.includes(k))a.push(k)}));return a;}
-function uid(){return "w"+Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+function columns(rows){const a=[];(rows||[]).forEach(r=>Object.keys(r||{}).forEach(k=>{if(!a.includes(k))a.push(k)}));return a;}
+function uid(){return "id_"+Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+function norm(v){return String(v??"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();}
+function guessCol(cols,terms){return cols.find(c=>terms.some(t=>norm(c).includes(t)))||"";}
 function localDate(){return new Intl.DateTimeFormat("es-AR",{day:"2-digit",month:"2-digit",year:"numeric"}).format(new Date());}
+function numberValue(v){if(typeof v==="number")return Number.isFinite(v)?v:0;let s=String(v??"").trim().replace(/\s/g,"");if(!s)return 0;if(s.includes(",")&&s.includes(".")){s=s.lastIndexOf(",")>s.lastIndexOf(".")?s.replace(/\./g,"").replace(",","."):s.replace(/,/g,"");}else if(s.includes(","))s=s.replace(",",".");const n=Number(s);return Number.isFinite(n)?n:0;}
+function activeRows(i){return book.sheets[Number(i)]?.rows||[];}
 
-/* LOGIN */
+/* INICIO DE SESIÓN */
 $("loginForm").addEventListener("submit",async e=>{
  e.preventDefault();message("loginStatus","Ingresando...");
- const {data,error}=await sb.auth.signInWithPassword({
-  email:$("email").value.trim(),password:$("password").value
- });
+ const {data,error}=await sb.auth.signInWithPassword({email:$("email").value.trim(),password:$("password").value});
  if(error){message("loginStatus","No se pudo ingresar: "+error.message,true);return;}
  currentUser=data.user;await startApp();
 });
-$("logoutBtn").onclick=async()=>{
- await sb.auth.signOut();currentUser=null;
- $("app").style.display="none";$("login").style.display="block";
-};
-sb.auth.onAuthStateChange((event,session)=>{
- if(session?.user&&!currentUser){currentUser=session.user;setTimeout(startApp,0);}
-});
+$("logoutBtn").onclick=async()=>{await sb.auth.signOut();currentUser=null;$("app").style.display="none";$("login").style.display="block";};
+sb.auth.onAuthStateChange((event,session)=>{if(session?.user&&!currentUser){currentUser=session.user;setTimeout(startApp,0);}});
 
-/* SUPABASE: mantiene el objeto JSON de la aplicación */
 async function loadBook(){
  const {data,error}=await sb.from("app_state").select("data").eq("id",1).maybeSingle();
  if(error)throw new Error("Error leyendo Supabase: "+error.message);
- if(data?.data&&typeof data.data==="object"){
-  const s=data.data;
+ const s=data?.data;
+ if(s&&typeof s==="object"){
   book={
    sheets:Array.isArray(s.sheets)&&s.sheets.length?s.sheets:[{name:"Registros",rows:[]}],
    active:Number.isInteger(s.active)?s.active:0,
-   design:{...DEFAULT_DESIGN,...(s.design||{})},
+   design:{...DEFAULT_DESIGN,...(s.design||{}),logos:Array.isArray(s.design?.logos)?s.design.logos:[]},
    tabLabels:{...DEFAULT_LABELS,...(s.tabLabels||{})},
    customTabs:Array.isArray(s.customTabs)?s.customTabs:[],
    widgets:Array.isArray(s.widgets)?s.widgets:[],
-   stockConfig:{sheet:0,product:"",code:"",qty:"",...(s.stockConfig||{})}
+   stockConfig:{sheet:0,product:"",code:"",qty:"",...(s.stockConfig||{})},
+   productConfig:{sheet:0,name:"",code:"",stock:"",client:"",consign:"",...(s.productConfig||{})},
+   countConfig:{sheet:0,column:"",type:"rows",sumColumn:"",...(s.countConfig||{})}
   };
  }else{
-  book={sheets:[{name:"Registros",rows:[]}],active:0,
-   design:{...DEFAULT_DESIGN},tabLabels:{...DEFAULT_LABELS},
-   customTabs:[],widgets:[],stockConfig:{sheet:0,product:"",code:"",qty:""}};
+  book={sheets:[{name:"Registros",rows:[]}],active:0,design:{...DEFAULT_DESIGN,logos:[]},tabLabels:{...DEFAULT_LABELS},customTabs:[],widgets:[],stockConfig:{sheet:0,product:"",code:"",qty:""},productConfig:{sheet:0,name:"",code:"",stock:"",client:"",consign:""},countConfig:{sheet:0,column:"",type:"rows",sumColumn:""}};
  }
  if(book.active<0||book.active>=book.sheets.length)book.active=0;
  book.sheets.forEach(s=>{if(!Array.isArray(s.rows))s.rows=[];if(!s.name)s.name="Registros";});
 }
 async function saveBook(){
  if(!currentUser)throw new Error("Iniciá sesión primero.");
- const {error}=await sb.from("app_state").upsert({
-  id:1,data:book,updated_by:currentUser.id,updated_at:new Date().toISOString()
- },{onConflict:"id"});
+ const {error}=await sb.from("app_state").upsert({id:1,data:book,updated_by:currentUser.id,updated_at:new Date().toISOString()},{onConflict:"id"});
  if(error)throw new Error("Error al guardar: "+error.message);
 }
 async function startApp(){
- if(busy)return;busy=true;
- $("login").style.display="none";$("app").style.display="block";
- $("userEmail").textContent=currentUser?.email||"";
- try{
-  await loadBook();
-  populateDesign();renderAll();applyDesign();renderTabs();
-  showTab("dashboard");
- }catch(e){alert(e.message);}
+ if(busy)return;busy=true;$("login").style.display="none";$("app").style.display="block";$("userEmail").textContent=currentUser?.email||"";
+ try{await loadBook();populateDesign();renderAll();applyDesign();renderTabs();renderLogos();showTab("dashboard");}
+ catch(e){alert(e.message);}
  finally{busy=false;}
 }
 
-/* TABS: base + pestañas creadas por el usuario */
-function allTabs(){
- return [
-  {id:"dashboard",label:book.tabLabels.dashboard||"Inicio",fixed:true},
-  {id:"records",label:book.tabLabels.records||"Registros",fixed:true},
-  {id:"stock",label:book.tabLabels.stock||"Stock actual",fixed:true},
-  ...book.customTabs.map(t=>({...t,fixed:false})),
-  {id:"design",label:book.tabLabels.design||"Diseño de página",fixed:true}
- ];
-}
+/* PESTAÑAS */
+function allTabs(){return [{id:"dashboard",label:book.tabLabels.dashboard||"Inicio"},{id:"records",label:book.tabLabels.records||"Registros"},{id:"stock",label:book.tabLabels.stock||"Stock actual"},...book.customTabs,{id:"design",label:book.tabLabels.design||"Diseño de página"}];}
 function renderTabs(){
  $("tabs").innerHTML="";
- allTabs().forEach(t=>{
-  const b=document.createElement("button");
-  b.textContent=t.label;b.className=t.id===activeTab?"active":"";
-  b.onclick=()=>showTab(t.id);$("tabs").appendChild(b);
- });
+ allTabs().forEach(t=>{const b=document.createElement("button");b.textContent=t.label;b.className=t.id===activeTab?"active":"";b.onclick=()=>showTab(t.id);$("tabs").appendChild(b);});
 }
 function showTab(id){
- activeTab=id;
- ["dashboardTab","recordsTab","stockTab","designTab","customTab"].forEach(x=>$(x).classList.add("hidden"));
+ activeTab=id;["dashboardTab","recordsTab","stockTab","designTab","customTab"].forEach(x=>$(x).classList.add("hidden"));
  if(["dashboard","records","stock","design"].includes(id))$(id+"Tab").classList.remove("hidden");
- else{
-  $("customTab").classList.remove("hidden");
-  const t=book.customTabs.find(x=>x.id===id);
-  $("customHeading").textContent=t?.label||"Pestaña";
-  $("renameCurrentTabBtn").classList.remove("hidden");
-  $("deleteCurrentTabBtn").classList.remove("hidden");
-  renderWidgetsInto("customWidgets",id);
- }
+ else{$("customTab").classList.remove("hidden");const t=book.customTabs.find(x=>x.id===id);$("customHeading").textContent=t?.label||"Pestaña";renderWidgetsInto("customWidgets",id);}
  renderTabs();
  if(id==="records")renderRecords();
- if(id==="dashboard"){renderDashboard();renderWidgetsInto("dashboardWidgets","dashboard");}
+ if(id==="dashboard"){setupCountControls();setupProductControls();renderDashboard();renderWidgetsInto("dashboardWidgets","dashboard");}
  if(id==="stock"){setupStockControls();renderStock();}
- if(id==="design"){renderTabTitleEditor();renderWidgetEditor();}
+ if(id==="design"){renderTabTitleEditor();renderWidgetEditor();renderLogos();}
 }
 
-/* REGISTROS */
-function renderAll(){
- renderSheetSelect();renderRecords();renderDashboard();setupStockControls();
-}
+/* REGISTROS Y EXCEL */
+function renderAll(){renderSheetSelect();renderRecords();setupCountControls();setupProductControls();setupStockControls();renderDashboard();}
 function renderSheetSelect(){
- const sel=$("sheetSelect");sel.innerHTML="";
- book.sheets.forEach((s,i)=>{const o=document.createElement("option");o.value=i;o.textContent=s.name;sel.appendChild(o);});
- sel.value=String(book.active);
+ $("sheetSelect").innerHTML=book.sheets.map((s,i)=>'<option value="'+i+'">'+esc(s.name)+'</option>').join("");$("sheetSelect").value=String(book.active);
 }
 $("sheetSelect").onchange=()=>{book.active=Number($("sheetSelect").value);renderRecords();renderDashboard();};
 function renderRecords(){
@@ -432,49 +336,18 @@ function renderRecords(){
  const rows=s.rows.map((r,i)=>({r,i})).filter(x=>!q||Object.values(x.r).some(v=>String(v??"").toLowerCase().includes(q)));
  if(!cols.length){$("recordsTable").innerHTML="<p style='padding:14px'>La hoja está vacía. Importá Excel o agregá una columna.</p>";return;}
  let h="<table><thead><tr>"+cols.map(c=>"<th>"+esc(c)+"</th>").join("")+"<th>Acciones</th></tr></thead><tbody>";
- rows.forEach(x=>{
-  h+="<tr>"+cols.map(c=>'<td contenteditable="true" data-row="'+x.i+'" data-col="'+esc(c)+'">'+esc(x.r[c]??"")+"</td>").join("");
-  h+='<td><button class="danger" data-del="'+x.i+'">Eliminar</button></td></tr>';
- });
+ rows.forEach(x=>{h+="<tr>"+cols.map(c=>'<td contenteditable="true" data-row="'+x.i+'" data-col="'+esc(c)+'">'+esc(x.r[c]??"")+"</td>").join("")+'<td><button class="danger" data-del="'+x.i+'">Eliminar</button></td></tr>';});
  $("recordsTable").innerHTML=h+"</tbody></table>";
- $("recordsTable").querySelectorAll("[contenteditable]").forEach(td=>{
-  td.onblur=()=>{s.rows[Number(td.dataset.row)][td.dataset.col]=td.textContent.trim();};
-  td.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();td.blur();}};
- });
- $("recordsTable").querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{
-  if(confirm("¿Eliminar esta fila?")){s.rows.splice(Number(b.dataset.del),1);renderRecords();renderDashboard();}
- });
+ $("recordsTable").querySelectorAll("[contenteditable]").forEach(td=>{td.onblur=()=>{s.rows[Number(td.dataset.row)][td.dataset.col]=td.textContent.trim();};td.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();td.blur();}};});
+ $("recordsTable").querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{if(confirm("¿Eliminar esta fila?")){s.rows.splice(Number(b.dataset.del),1);renderRecords();renderDashboard();}});
 }
 $("searchInput").oninput=renderRecords;
-$("addRowBtn").onclick=()=>{
- let c=columns(sheet().rows);
- if(!c.length){const name=prompt("Nombre de la primera columna:","Producto");if(!name)return;c=[name.trim()];}
- const row={};c.forEach(k=>row[k]="");sheet().rows.push(row);renderRecords();
-};
-$("addColumnBtn").onclick=()=>{
- const name=prompt("Nombre de la nueva columna:");if(!name?.trim())return;
- const c=name.trim();if(columns(sheet().rows).includes(c)){alert("La columna ya existe.");return;}
- if(!sheet().rows.length)sheet().rows.push({[c]:""});
- else sheet().rows.forEach(r=>r[c]="");
- renderRecords();
-};
-$("newSheetBtn").onclick=()=>{
- const n=prompt("Nombre de la nueva hoja:");if(!n?.trim())return;
- book.sheets.push({name:n.trim(),rows:[]});book.active=book.sheets.length-1;renderAll();
-};
-$("renameSheetBtn").onclick=()=>{
- const n=prompt("Nuevo nombre:",sheet().name);if(n?.trim()){sheet().name=n.trim();renderSheetSelect();}
-};
-$("deleteSheetBtn").onclick=()=>{
- if(book.sheets.length<2){alert("Debe quedar al menos una hoja.");return;}
- if(confirm("¿Eliminar esta hoja y todos sus registros?")){book.sheets.splice(book.active,1);book.active=0;renderAll();}
-};
-$("saveRecordsBtn").onclick=async()=>{
- try{message("recordsStatus","Guardando...");await saveBook();message("recordsStatus","Registros guardados.");}
- catch(e){message("recordsStatus",e.message,true);}
-};
-
-/* EXCEL */
+$("addRowBtn").onclick=()=>{let c=columns(sheet().rows);if(!c.length){const name=prompt("Nombre de la primera columna:","Producto");if(!name)return;c=[name.trim()];}const row={};c.forEach(k=>row[k]="");sheet().rows.push(row);renderRecords();};
+$("addColumnBtn").onclick=()=>{const name=prompt("Nombre de la nueva columna:");if(!name?.trim())return;const c=name.trim();if(columns(sheet().rows).includes(c)){alert("La columna ya existe.");return;}if(!sheet().rows.length)sheet().rows.push({[c]:""});else sheet().rows.forEach(r=>r[c]="");renderRecords();};
+$("newSheetBtn").onclick=()=>{const n=prompt("Nombre de la nueva hoja:");if(!n?.trim())return;book.sheets.push({name:n.trim(),rows:[]});book.active=book.sheets.length-1;renderAll();};
+$("renameSheetBtn").onclick=()=>{const n=prompt("Nuevo nombre:",sheet().name);if(n?.trim()){sheet().name=n.trim();renderSheetSelect();setupCountControls();setupProductControls();setupStockControls();}};
+$("deleteSheetBtn").onclick=()=>{if(book.sheets.length<2){alert("Debe quedar al menos una hoja.");return;}if(confirm("¿Eliminar esta hoja y sus registros?")){book.sheets.splice(book.active,1);book.active=0;renderAll();}};
+$("saveRecordsBtn").onclick=async()=>{try{message("recordsStatus","Guardando...");await saveBook();message("recordsStatus","Registros guardados.");}catch(e){message("recordsStatus",e.message,true);}};
 $("importBtn").onclick=()=>$("excelFile").click();
 $("excelFile").onchange=async e=>{
  const f=e.target.files[0];if(!f)return;
@@ -489,324 +362,262 @@ $("excelFile").onchange=async e=>{
  }catch(err){message("recordsStatus","Error al importar: "+err.message,true);}
  finally{e.target.value="";}
 };
-$("exportBtn").onclick=()=>{
- const ws=XLSX.utils.json_to_sheet(sheet().rows),wb=XLSX.utils.book_new();
- XLSX.utils.book_append_sheet(wb,ws,sheet().name.slice(0,31)||"Registros");
- XLSX.writeFile(wb,(sheet().name||"registros")+".xlsx");
+$("exportBtn").onclick=()=>{const ws=XLSX.utils.json_to_sheet(sheet().rows),wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,(sheet().name||"Registros").slice(0,31));XLSX.writeFile(wb,(sheet().name||"registros")+".xlsx");};
+
+/* CONTROLES DE COLUMNAS */
+function fillSelect(id,cols,selected="",placeholder="— Seleccionar columna —"){
+ const el=$(id);el.innerHTML='<option value="">'+placeholder+'</option>'+cols.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join("");
+ if(cols.includes(selected))el.value=selected;
+}
+function fillSheetSelect(id,selected=0){
+ $(id).innerHTML=book.sheets.map((s,i)=>'<option value="'+i+'">'+esc(s.name)+'</option>').join("");
+ $(id).value=String(Math.min(Math.max(0,Number(selected)||0),book.sheets.length-1));
+}
+
+/* INICIO: RECUENTOS CONFIGURABLES */
+function setupCountControls(){
+ const c=book.countConfig||{};fillSheetSelect("countSheet",c.sheet||0);
+ const cols=columns(activeRows($("countSheet").value));
+ fillSelect("countColumn",cols,c.column);fillSelect("countSumColumn",cols,c.sumColumn);
+ $("countType").value=c.type||"rows";
+}
+$("countSheet").onchange=()=>{const cols=columns(activeRows($("countSheet").value));fillSelect("countColumn",cols);fillSelect("countSumColumn",cols);renderDashboard();};
+["countColumn","countType","countSumColumn"].forEach(id=>$(id).onchange=renderDashboard);
+$("saveCountConfig").onclick=async()=>{
+ book.countConfig={sheet:Number($("countSheet").value),column:$("countColumn").value,type:$("countType").value,sumColumn:$("countSumColumn").value};
+ try{await saveBook();message("countStatus","Configuración de recuentos guardada.");}catch(e){message("countStatus",e.message,true);}
 };
+function renderDashboard(){
+ const cfg=book.countConfig||{},rows=activeRows(cfg.sheet??0),col=cfg.column||"";
+ let value=rows.length,label="Registros en la hoja";
+ if(cfg.type==="unique"){value=new Set(rows.map(r=>String(r[col]??"").trim()).filter(Boolean)).size;label="Valores únicos: "+(col||"columna no elegida");}
+ if(cfg.type==="sum"){value=rows.reduce((s,r)=>s+numberValue(r[cfg.sumColumn]),0);label="Suma de "+(cfg.sumColumn||"columna no elegida");}
+ const activeCount=activeRows(book.active).length;
+ $("defaultStats").innerHTML=[
+  ["Recuento configurado",value,label],["Registros de la hoja activa",activeCount,"Hoja: "+sheet().name],["Hojas disponibles",book.sheets.length,"En esta aplicación"]
+ ].map(([a,b,c])=>'<div class="stat"><span class="muted">'+esc(a)+'</span><strong>'+esc(b)+'</strong><small>'+esc(c)+'</small></div>').join("");
+}
+
+/* BUSCADOR DE PRODUCTOS */
+function setupProductControls(){
+ const c=book.productConfig||{};fillSheetSelect("productSheet",c.sheet||0);
+ const cols=columns(activeRows($("productSheet").value));
+ fillSelect("productNameCol",cols,c.name);fillSelect("productCodeCol",cols,c.code);
+ fillSelect("productStockCol",cols,c.stock);fillSelect("productClientCol",cols,c.client);fillSelect("productConsignCol",cols,c.consign);
+ if(!c.name)$("productNameCol").value=guessCol(cols,["producto","articulo","descripcion","nombre"]);
+ if(!c.code)$("productCodeCol").value=guessCol(cols,["codigo","sku","cod"]);
+ if(!c.stock)$("productStockCol").value=guessCol(cols,["stock","cantidad","existencia","unidades"]);
+ if(!c.client)$("productClientCol").value=guessCol(cols,["cliente"]);
+ if(!c.consign)$("productConsignCol").value=guessCol(cols,["consignacion","consigna","consignado"]);
+ renderProductOptions();
+}
+$("productSheet").onchange=()=>{book.productConfig.sheet=Number($("productSheet").value);book.productConfig.name="";book.productConfig.code="";book.productConfig.stock="";book.productConfig.client="";book.productConfig.consign="";setupProductControls();};
+["productNameCol","productCodeCol","productStockCol","productClientCol","productConsignCol"].forEach(id=>$(id).onchange=renderProductOptions);
+$("refreshProducts").onclick=()=>{setupProductControls();message("productStatus","Listado de productos actualizado.");};
+$("saveProductConfig").onclick=async()=>{
+ book.productConfig={sheet:Number($("productSheet").value),name:$("productNameCol").value,code:$("productCodeCol").value,stock:$("productStockCol").value,client:$("productClientCol").value,consign:$("productConsignCol").value};
+ try{await saveBook();message("productStatus","Configuración del buscador guardada.");}catch(e){message("productStatus",e.message,true);}
+};
+function renderProductOptions(){
+ const cfg={sheet:Number($("productSheet").value||0),name:$("productNameCol").value,code:$("productCodeCol").value,stock:$("productStockCol").value,client:$("productClientCol").value,consign:$("productConsignCol").value};
+ const rows=activeRows(cfg.sheet),nameCol=cfg.name,codeCol=cfg.code;
+ const products=[...new Set(rows.map(r=>String(r[nameCol]??"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"es"));
+ const old=$("productFilter").value;
+ $("productFilter").innerHTML='<option value="">— Elegir producto —</option>'+products.map(p=>'<option value="'+esc(p)+'">'+esc(p)+'</option>').join("");
+ if(products.includes(old))$("productFilter").value=old;
+ $("productFilter").onchange=()=>showProduct($("productFilter").value,cfg);
+ if($("productFilter").value)showProduct($("productFilter").value,cfg);
+ else $("productCard").innerHTML='<p class="muted">Seleccioná un producto para ver código, stock, cliente y consignación.</p>';
+}
+function showProduct(product,cfg){
+ if(!product){$("productCard").innerHTML="";return;}
+ const rows=activeRows(cfg.sheet).filter(r=>String(r[cfg.name]??"").trim()===product);
+ const codeValues=[...new Set(rows.map(r=>String(r[cfg.code]??"").trim()).filter(Boolean))];
+ const clients=[...new Set(rows.map(r=>String(r[cfg.client]??"").trim()).filter(Boolean))];
+ const consigns=[...new Set(rows.map(r=>String(r[cfg.consign]??"").trim()).filter(Boolean))];
+ const stock=cfg.stock?rows.reduce((s,r)=>s+numberValue(r[cfg.stock]),0):"No configurado";
+ const details=[["Producto",product],["Código",codeValues.join(", ")||"Sin código"],["Stock total",stock],["Cliente",clients.join(", ")||"Sin dato"],["Consignación",consigns.join(", ")||"Sin dato"]];
+ $("productCard").innerHTML=details.map(([a,b])=>'<div class="stat"><span class="muted">'+esc(a)+'</span><strong style="font-size:20px">'+esc(b)+'</strong></div>').join("");
+}
+$("productFilter").onchange=()=>renderProductOptions();
 
 /* STOCK ACTUAL */
-function guessCol(cols,terms){
- return cols.find(c=>terms.some(t=>c.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").includes(t)));
-}
 function setupStockControls(){
- const sel=$("stockSheetSelect"),old=Number(sel.value||book.stockConfig.sheet||0);
- sel.innerHTML="";
- book.sheets.forEach((s,i)=>{const o=document.createElement("option");o.value=i;o.textContent=s.name;sel.appendChild(o);});
- const index=Math.min(Math.max(0,Number(book.stockConfig.sheet??old)),book.sheets.length-1);
- sel.value=String(index);populateStockColumns(false);
+ const c=book.stockConfig||{};fillSheetSelect("stockSheetSelect",c.sheet||0);
+ const cols=columns(activeRows($("stockSheetSelect").value));
+ fillSelect("stockProductCol",cols,c.product);fillSelect("stockCodeCol",cols,c.code);fillSelect("stockQtyCol",cols,c.qty);
+ if(!c.product)$("stockProductCol").value=guessCol(cols,["producto","descripcion","articulo","nombre"]);
+ if(!c.code)$("stockCodeCol").value=guessCol(cols,["codigo","sku","cod"]);
+ if(!c.qty)$("stockQtyCol").value=guessCol(cols,["cantidad","stock","existencia","unidades"]);
 }
-function populateStockColumns(guess=true){
- const i=Number($("stockSheetSelect").value||0),cols=columns(book.sheets[i]?.rows||[]);
- const fields=[["stockProductCol","product",["producto","descripcion","articulo","nombre"]],
- ["stockCodeCol","code",["codigo","cod","sku","ean"]],
- ["stockQtyCol","qty",["cantidad","stock","cant","existencia","unidades"]]];
- fields.forEach(([id,key,terms])=>{
-  const el=$(id),previous=book.stockConfig[key]||"";
-  el.innerHTML='<option value="">— Seleccionar columna —</option>';
-  cols.forEach(c=>{const o=document.createElement("option");o.value=c;o.textContent=c;el.appendChild(o);});
-  const found=guess?guessCol(cols,terms):previous;
-  el.value=cols.includes(previous)?previous:(found||"");
- });
- book.stockConfig.sheet=i;
-}
-$("stockSheetSelect").onchange=()=>{book.stockConfig.sheet=Number($("stockSheetSelect").value);populateStockColumns(true);renderStock();};
-["stockProductCol","stockCodeCol","stockQtyCol"].forEach((id,i)=>{
- $(id).onchange=()=>{book.stockConfig[["product","code","qty"][i]]=$(id).value;renderStock();};
-});
-$("refreshStockBtn").onclick=()=>{populateStockColumns(false);renderStock();};
-function numberValue(v){
- if(typeof v==="number")return Number.isFinite(v)?v:0;
- let s=String(v??"").trim().replace(/\s/g,"");
- if(!s)return 0;
- if(s.includes(",")&&s.includes(".")){
-  s=s.lastIndexOf(",")>s.lastIndexOf(".")?s.replace(/\./g,"").replace(",","."):s.replace(/,/g,"");
- }else if(s.includes(","))s=s.replace(",",".");
- const n=Number(s);return Number.isFinite(n)?n:0;
-}
+$("stockSheetSelect").onchange=()=>{book.stockConfig.sheet=Number($("stockSheetSelect").value);book.stockConfig.product="";book.stockConfig.code="";book.stockConfig.qty="";setupStockControls();renderStock();};
+["stockProductCol","stockCodeCol","stockQtyCol"].forEach((id,i)=>$(id).onchange=()=>{book.stockConfig[["product","code","qty"][i]]=$(id).value;renderStock();});
+$("refreshStockBtn").onclick=()=>{book.stockConfig={sheet:Number($("stockSheetSelect").value),product:$("stockProductCol").value,code:$("stockCodeCol").value,qty:$("stockQtyCol").value};renderStock();};
 function getStockRows(){
- const i=Number($("stockSheetSelect").value||0),rows=book.sheets[i]?.rows||[];
- const p=$("stockProductCol").value,c=$("stockCodeCol").value,q=$("stockQtyCol").value;
- if(!p||!c||!q)return {rows:[],error:"Elegí las columnas de producto, código y cantidad."};
+ const i=Number($("stockSheetSelect").value||0),rows=activeRows(i),p=$("stockProductCol").value,c=$("stockCodeCol").value,q=$("stockQtyCol").value;
+ if(!p||!c||!q)return {rows:[],error:"Seleccioná las columnas de producto, código y cantidad."};
  const map=new Map();
  rows.forEach(r=>{
   const product=String(r[p]??"").trim(),code=String(r[c]??"").trim();
-  const qty=numberValue(r[q]);
   if(!product&&!code)return;
   const key=code+"||"+product;
   if(!map.has(key))map.set(key,{code,product,qty:0});
-  map.get(key).qty+=qty;
+  map.get(key).qty+=numberValue(r[q]);
  });
  return {rows:[...map.values()].sort((a,b)=>a.product.localeCompare(b.product,"es")),error:""};
 }
 function renderStock(){
- const result=getStockRows();
  $("printCompany").textContent=book.design.title||"FITIN CAMPO";
  $("printTitle").textContent=book.design.stockHeading||"Stock actual";
  $("printDate").textContent="Fecha de emisión: "+localDate();
- if(result.error){
-  $("stockTable").innerHTML="<p style='padding:12px'>"+esc(result.error)+"</p>";
-  $("stockStats").innerHTML="";message("stockStatus",result.error,true);return;
- }
- const rows=result.rows;
- $("stockStats").innerHTML=[
-  ["Productos",rows.length],
-  ["Unidades totales",rows.reduce((s,r)=>s+r.qty,0)]
- ].map(([a,b])=>'<div class="stat"><span class="muted">'+a+'</span><strong>'+b+'</strong></div>').join("");
- $("stockTable").innerHTML="<table><thead><tr><th>Código</th><th>Producto</th><th>Cantidad total</th></tr></thead><tbody>"+
-  (rows.length?rows.map(r=>"<tr><td>"+esc(r.code)+"</td><td>"+esc(r.product)+"</td><td>"+esc(r.qty)+"</td></tr>").join(""):"<tr><td colspan='3'>No hay productos para mostrar.</td></tr>")+
-  "</tbody></table>";
- message("stockStatus",rows.length+" productos consolidados.");
+ const res=getStockRows();
+ if(res.error){$("stockTable").innerHTML="<p style='padding:12px'>"+esc(res.error)+"</p>";$("stockStats").innerHTML="";message("stockStatus",res.error,true);return;}
+ $("stockStats").innerHTML='<div class="stat"><span class="muted">Productos</span><strong>'+res.rows.length+'</strong></div><div class="stat"><span class="muted">Unidades totales</span><strong>'+res.rows.reduce((s,r)=>s+r.qty,0)+'</strong></div>';
+ $("stockTable").innerHTML="<table><thead><tr><th>Código</th><th>Producto</th><th>Cantidad total</th></tr></thead><tbody>"+(res.rows.length?res.rows.map(r=>"<tr><td>"+esc(r.code)+"</td><td>"+esc(r.product)+"</td><td>"+esc(r.qty)+"</td></tr>").join(""):"<tr><td colspan='3'>No hay productos.</td></tr>")+"</tbody></table>";
+ message("stockStatus",res.rows.length+" productos consolidados.");
 }
-$("printStockBtn").onclick=()=>{
- renderStock();
- if(getStockRows().error){alert("Seleccioná las tres columnas antes de imprimir.");return;}
- window.print();
-};
+$("printStockBtn").onclick=()=>{renderStock();if(getStockRows().error){alert("Seleccioná las tres columnas antes de imprimir.");return;}window.print();};
 
-/* PANEL PRINCIPAL */
-function renderDashboard(){
- const rows=sheet().rows,cols=columns(rows);
- $("defaultStats").innerHTML=[
-  ["Hojas",book.sheets.length],["Registros en la hoja activa",rows.length],["Columnas",cols.length]
- ].map(([a,b])=>'<div class="stat"><span class="muted">'+a+'</span><strong>'+b+'</strong></div>').join("");
- renderWidgetsInto("dashboardWidgets","dashboard");
-}
-
-/* CONSTRUCTOR DE PANELES */
-function widgetDefaults(){
- return {id:uid(),title:"Nuevo panel",type:"metric",tab:"dashboard",
-  sheet:0,category:"",value:"",size:"6"};
-}
-function widgetSourceOptions(selected){
- return book.sheets.map((s,i)=>'<option value="'+i+'" '+(Number(selected)===i?"selected":"")+'>'+esc(s.name)+'</option>').join("");
-}
-function columnOptions(index,selected){
- const cols=columns(book.sheets[index]?.rows||[]);
- return '<option value="">— Elegir columna —</option>'+cols.map(c=>'<option value="'+esc(c)+'" '+(c===selected?"selected":"")+'>'+esc(c)+'</option>').join("");
-}
+/* PANELES Y GRÁFICOS */
+function widgetDefaults(){return {id:uid(),title:"Nuevo panel",type:"metric",tab:"dashboard",sheet:0,category:"",value:"",size:"6"};}
 function renderWidgetEditor(){
  const el=$("widgetEditor");
- if(!book.widgets.length){el.innerHTML="<p class='muted'>Todavía no hay paneles personalizados.</p>";return;}
+ if(!book.widgets.length){el.innerHTML="<p class='muted'>Todavía no hay paneles. Presioná Agregar panel.</p>";return;}
  el.innerHTML=book.widgets.map(w=>{
   const tabs=[{id:"dashboard",label:book.tabLabels.dashboard},...book.customTabs];
   return '<div class="editor-row" data-widget="'+esc(w.id)+'">'+
    '<div><label>Título</label><input data-k="title" value="'+esc(w.title)+'"></div>'+
-   '<div><label>Tipo de panel</label><select data-k="type">'+
-    [["metric","Indicador numérico"],["table","Tabla de registros"],["bar","Gráfico de barras"],["pie","Gráfico de torta"]].map(([v,l])=>'<option value="'+v+'" '+(w.type===v?"selected":"")+'>'+l+'</option>').join("")+
-   '</select></div>'+
-   '<div><label>Pestaña destino</label><select data-k="tab">'+tabs.map(t=>'<option value="'+t.id+'" '+(w.tab===t.id?"selected":"")+'>'+esc(t.label||t.id)+'</option>').join("")+'</select></div>'+
-   '<div><label>Hoja de datos</label><select data-k="sheet">'+widgetSourceOptions(w.sheet)+'</select></div>'+
-   '<div><label>Columna para agrupar</label><select data-k="category">'+columnOptions(w.sheet,w.category)+'</select></div>'+
-   '<div><label>Columna numérica</label><select data-k="value">'+columnOptions(w.sheet,w.value)+'</select></div>'+
-   '<div><label>Ancho del panel</label><select data-k="size">'+
-    '<option value="4" '+(w.size==="4"?"selected":"")+'>1/3</option>'+
-    '<option value="6" '+(w.size==="6"?"selected":"")+'>1/2</option>'+
-    '<option value="12" '+(w.size==="12"?"selected":"")+'>Completo</option></select></div>'+
-   '<div style="display:flex;align-items:end"><button class="danger" data-remove="'+esc(w.id)+'">Eliminar panel</button></div>'+
-  '</div>';
+   '<div><label>Tipo</label><select data-k="type">'+[["metric","Indicador numérico"],["table","Tabla"],["bar","Gráfico de barras"],["pie","Gráfico de torta"]].map(([v,l])=>'<option value="'+v+'" '+(w.type===v?"selected":"")+'>'+l+'</option>').join("")+'</select></div>'+
+   '<div><label>Pestaña</label><select data-k="tab">'+tabs.map(t=>'<option value="'+t.id+'" '+(w.tab===t.id?"selected":"")+'>'+esc(t.label||t.id)+'</option>').join("")+'</select></div>'+
+   '<div><label>Hoja</label><select data-k="sheet">'+book.sheets.map((s,i)=>'<option value="'+i+'" '+(Number(w.sheet)===i?"selected":"")+'>'+esc(s.name)+'</option>').join("")+'</select></div>'+
+   '<div><label>Columna para agrupar</label><select data-k="category"><option value="">— Seleccionar —</option>'+columns(activeRows(w.sheet)).map(c=>'<option value="'+esc(c)+'" '+(w.category===c?"selected":"")+'>'+esc(c)+'</option>').join("")+'</select></div>'+
+   '<div><label>Columna numérica</label><select data-k="value"><option value="">— Cantidad de registros —</option>'+columns(activeRows(w.sheet)).map(c=>'<option value="'+esc(c)+'" '+(w.value===c?"selected":"")+'>'+esc(c)+'</option>').join("")+'</select></div>'+
+   '<div><label>Ancho</label><select data-k="size"><option value="4" '+(w.size==="4"?"selected":"")+'>1/3</option><option value="6" '+(w.size==="6"?"selected":"")+'>1/2</option><option value="12" '+(w.size==="12"?"selected":"")+'>Completo</option></select></div>'+
+   '<div style="display:flex;align-items:end"><button class="danger" data-remove="'+esc(w.id)+'">Eliminar panel</button></div></div>';
  }).join("");
  el.querySelectorAll("[data-widget]").forEach(row=>{
   const w=book.widgets.find(x=>x.id===row.dataset.widget);
-  row.querySelectorAll("[data-k]").forEach(input=>{
-   input.onchange=()=>{
-    w[input.dataset.k]=input.value;
-    if(input.dataset.k==="sheet"){
-     w.sheet=Number(input.value);w.category="";w.value="";renderWidgetEditor();
-    }
-   };
+  row.querySelectorAll("[data-k]").forEach(input=>input.onchange=()=>{
+   w[input.dataset.k]=input.value;
+   if(input.dataset.k==="sheet"){w.sheet=Number(input.value);w.category="";w.value="";renderWidgetEditor();}
   });
  });
- el.querySelectorAll("[data-remove]").forEach(b=>b.onclick=()=>{
-  if(confirm("¿Eliminar este panel?")){
-   book.widgets=book.widgets.filter(w=>w.id!==b.dataset.remove);renderWidgetEditor();
-   renderWidgetsInto("dashboardWidgets","dashboard");
-  }
- });
+ el.querySelectorAll("[data-remove]").forEach(b=>b.onclick=()=>{if(confirm("¿Eliminar este panel?")){book.widgets=book.widgets.filter(w=>w.id!==b.dataset.remove);renderWidgetEditor();renderWidgetsInto("dashboardWidgets","dashboard");}});
 }
-$("addWidgetBtn").onclick=()=>{
- book.widgets.push(widgetDefaults());renderWidgetEditor();
-};
+$("addWidgetBtn").onclick=()=>{book.widgets.push(widgetDefaults());renderWidgetEditor();};
 function renderWidgetsInto(containerId,tabId){
- const container=$(containerId);
- container.innerHTML="";
+ const container=$(containerId);container.innerHTML="";
  book.widgets.filter(w=>w.tab===tabId).forEach(w=>{
-  const wrapper=document.createElement("div");
-  wrapper.className="widget "+(w.size==="12"?"span12":w.size==="4"?"span4":"");
+  const wrapper=document.createElement("div");wrapper.className="widget "+(w.size==="12"?"span12":w.size==="4"?"span4":"");
   const panel=document.createElement("div");panel.className="panel";
-  const head=document.createElement("div");head.className="widget-head";
-  const title=document.createElement("h3");title.textContent=w.title||"Panel";
-  head.appendChild(title);panel.appendChild(head);
-  const rows=book.sheets[Number(w.sheet)]?.rows||[];
+  const h=document.createElement("h3");h.textContent=w.title||"Panel";panel.appendChild(h);
+  const rows=activeRows(w.sheet);
   if(w.type==="metric"){
-   const stat=document.createElement("div");stat.className="stat";
-   let value=rows.length;
-   if(w.value)value=rows.reduce((sum,r)=>sum+numberValue(r[w.value]),0);
-   stat.innerHTML='<span class="muted">'+esc(w.value||"Cantidad de registros")+'</span><strong>'+esc(value)+'</strong>';
-   panel.appendChild(stat);
+   const value=w.value?rows.reduce((s,r)=>s+numberValue(r[w.value]),0):rows.length;
+   panel.insertAdjacentHTML("beforeend",'<div class="stat"><span class="muted">'+esc(w.value||"Cantidad de registros")+'</span><strong>'+esc(value)+'</strong></div>');
   }else if(w.type==="table"){
-   const cols=columns(rows);
-   const table=document.createElement("div");table.className="table-wrap";
-   table.innerHTML="<table><thead><tr>"+cols.map(c=>"<th>"+esc(c)+"</th>").join("")+
-    "</tr></thead><tbody>"+rows.slice(0,100).map(r=>"<tr>"+cols.map(c=>"<td>"+esc(r[c]??"")+"</td>").join("")+"</tr>").join("")+
-    "</tbody></table>";
-   panel.appendChild(table);
+   const cols=columns(rows);panel.insertAdjacentHTML("beforeend",'<div class="table-wrap"><table><thead><tr>'+cols.map(c=>"<th>"+esc(c)+"</th>").join("")+'</tr></thead><tbody>'+rows.slice(0,100).map(r=>"<tr>"+cols.map(c=>"<td>"+esc(r[c]??"")+"</td>").join("")+"</tr>").join("")+"</tbody></table></div>');
   }else{
    const canvas=document.createElement("canvas");panel.appendChild(canvas);
-   if(!window.Chart){
-    panel.insertAdjacentHTML("beforeend","<p>No se pudo cargar Chart.js.</p>");
-   }else{
+   if(window.Chart){
     const grouped=new Map();
-    rows.forEach(r=>{
-     const label=String(r[w.category]??"(Sin dato)");
-     const val=w.value?numberValue(r[w.value]):1;
-     grouped.set(label,(grouped.get(label)||0)+val);
-    });
+    rows.forEach(r=>{const label=String(r[w.category]??"(Sin dato)");const val=w.value?numberValue(r[w.value]):1;grouped.set(label,(grouped.get(label)||0)+val);});
     const entries=[...grouped.entries()].sort((a,b)=>b[1]-a[1]).slice(0,25);
-    const chart=new Chart(canvas,{
-     type:w.type==="pie"?"pie":"bar",
-     data:{labels:entries.map(x=>x[0]),datasets:[{label:w.value||"Registros",data:entries.map(x=>x[1])}]},
-     options:{responsive:true,maintainAspectRatio:true,
-      plugins:{legend:{display:w.type==="pie"},title:{display:false}},
-      scales:w.type==="pie"?{}:{y:{beginAtZero:true}}}
-    });
-    canvas._chart=chart;
-   }
+    new Chart(canvas,{type:w.type==="pie"?"pie":"bar",data:{labels:entries.map(x=>x[0]),datasets:[{label:w.value||"Registros",data:entries.map(x=>x[1])}]},options:{responsive:true,plugins:{legend:{display:w.type==="pie"}},scales:w.type==="pie"?{}:{y:{beginAtZero:true}}}});
+   }else panel.insertAdjacentHTML("beforeend","<p>No se pudo cargar Chart.js.</p>");
   }
   wrapper.appendChild(panel);container.appendChild(wrapper);
  });
 }
 
-/* EDITOR DE TÍTULOS DE PESTAÑAS */
+/* TÍTULOS Y PESTAÑAS PERSONALIZADAS */
 function renderTabTitleEditor(){
- $("tabTitleEditor").innerHTML=allTabs().map(t=>
-  '<div class="editor-row"><div><label>Nombre visible</label><input data-tab-label="'+esc(t.id)+'" value="'+esc(t.label)+'"></div>'+
-  '<div><label>Identificador</label><input disabled value="'+esc(t.id)+'"></div></div>'
- ).join("");
- $("tabTitleEditor").querySelectorAll("[data-tab-label]").forEach(input=>{
-  input.onchange=()=>{
-   const id=input.dataset.tabLabel;
-   if(id==="dashboard"||id==="records"||id==="stock"||id==="design")book.tabLabels[id]=input.value.trim()||DEFAULT_LABELS[id];
-   else{const t=book.customTabs.find(x=>x.id===id);if(t)t.label=input.value.trim()||"Pestaña";}
-  };
- });
+ $("tabTitleEditor").innerHTML=allTabs().map(t=>'<div class="editor-row"><div><label>Nombre visible</label><input data-tab-label="'+esc(t.id)+'" value="'+esc(t.label)+'"></div><div><label>Identificador</label><input disabled value="'+esc(t.id)+'"></div></div>').join("");
 }
 $("saveTabTitlesBtn").onclick=async()=>{
- try{
-  $("tabTitleEditor").querySelectorAll("[data-tab-label]").forEach(input=>{
-   const id=input.dataset.tabLabel;
-   if(Object.hasOwn(book.tabLabels,id))book.tabLabels[id]=input.value.trim()||DEFAULT_LABELS[id];
-   else{const t=book.customTabs.find(x=>x.id===id);if(t)t.label=input.value.trim()||"Pestaña";}
-  });
-  await saveBook();renderTabs();renderTabTitleEditor();renderWidgetEditor();
-  message("designStatus","Títulos de pestañas guardados.");
- }catch(e){message("designStatus",e.message,true);}
+ $("tabTitleEditor").querySelectorAll("[data-tab-label]").forEach(i=>{const id=i.dataset.tabLabel;if(Object.hasOwn(book.tabLabels,id))book.tabLabels[id]=i.value.trim()||DEFAULT_LABELS[id];else{const t=book.customTabs.find(x=>x.id===id);if(t)t.label=i.value.trim()||"Pestaña";}});
+ try{await saveBook();renderTabs();renderTabTitleEditor();renderWidgetEditor();message("designStatus","Títulos guardados.");}catch(e){message("designStatus",e.message,true);}
 };
-$("addTabBtn").onclick=async()=>{
- const label=prompt("Nombre de la nueva pestaña:");
- if(!label?.trim())return;
- const id="tab_"+uid();
- book.customTabs.push({id,label:label.trim()});
- try{await saveBook();renderTabs();renderTabTitleEditor();renderWidgetEditor();showTab(id);}
- catch(e){message("designStatus",e.message,true);}
-};
-$("renameCurrentTabBtn").onclick=async()=>{
- const t=book.customTabs.find(x=>x.id===activeTab);if(!t)return;
- const n=prompt("Nuevo nombre de la pestaña:",t.label);if(!n?.trim())return;
- t.label=n.trim();
- try{await saveBook();renderTabs();renderTabTitleEditor();renderWidgetEditor();$("customHeading").textContent=t.label;}
- catch(e){message("designStatus",e.message,true);}
-};
-$("deleteCurrentTabBtn").onclick=async()=>{
- const t=book.customTabs.find(x=>x.id===activeTab);if(!t)return;
- if(!confirm("¿Eliminar esta pestaña? Sus paneles también se eliminarán."))return;
- book.customTabs=book.customTabs.filter(x=>x.id!==activeTab);
- book.widgets=book.widgets.filter(w=>w.tab!==activeTab);
- try{await saveBook();renderTabs();renderTabTitleEditor();renderWidgetEditor();showTab("dashboard");}
- catch(e){message("designStatus",e.message,true);}
-};
+$("addTabBtn").onclick=async()=>{const label=prompt("Nombre de la nueva pestaña:");if(!label?.trim())return;const id=uid();book.customTabs.push({id,label:label.trim()});try{await saveBook();renderTabs();renderTabTitleEditor();renderWidgetEditor();showTab(id);}catch(e){message("designStatus",e.message,true);}};
+$("renameCurrentTabBtn").onclick=async()=>{const t=book.customTabs.find(x=>x.id===activeTab);if(!t)return;const n=prompt("Nuevo nombre:",t.label);if(!n?.trim())return;t.label=n.trim();try{await saveBook();renderTabs();renderTabTitleEditor();renderWidgetEditor();$("customHeading").textContent=t.label;}catch(e){message("designStatus",e.message,true);}};
+$("deleteCurrentTabBtn").onclick=async()=>{if(!book.customTabs.some(x=>x.id===activeTab))return;if(!confirm("¿Eliminar la pestaña y sus paneles?"))return;book.customTabs=book.customTabs.filter(t=>t.id!==activeTab);book.widgets=book.widgets.filter(w=>w.tab!==activeTab);try{await saveBook();renderTabs();renderTabTitleEditor();renderWidgetEditor();showTab("dashboard");}catch(e){message("designStatus",e.message,true);}};
 
-/* DISEÑO: colores, textos y tipografía */
-function makeColorEditor(){
- $("colorControls").innerHTML=COLORS.map(([key,label])=>
-  '<div><label>'+label+'</label><div class="color-field">'+
-  '<input type="color" id="color_'+key+'"><input id="hex_'+key+'" maxlength="7"></div></div>'
- ).join("");
- COLORS.forEach(([key])=>{
-  $("color_"+key).oninput=()=>{$("hex_"+key).value=$("color_"+key).value;previewDesign();};
-  $("hex_"+key).onchange=()=>{
-   if(/^#[0-9a-f]{6}$/i.test($("hex_"+key).value)){$("color_"+key).value=$("hex_"+key).value;previewDesign();}
-  };
- });
-}
-makeColorEditor();
+/* COLORES, TIPOGRAFÍA Y DISEÑO */
+$("colorControls").innerHTML=COLORS.map(([k,label])=>'<div><label>'+label+'</label><div class="color-field"><input type="color" id="color_'+k+'"><input id="hex_'+k+'" maxlength="7"></div></div>').join("");
+COLORS.forEach(([k])=>{$("color_"+k).oninput=()=>{$("hex_"+k).value=$("color_"+k).value;previewDesign();};$("hex_"+k).onchange=()=>{if(/^#[0-9a-f]{6}$/i.test($("hex_"+k).value)){$("color_"+k).value=$("hex_"+k).value;previewDesign();}};});
 function populateDesign(){
  const d={...DEFAULT_DESIGN,...book.design};
- const map={dTitle:"title",dSubtitle:"subtitle",dLoginTitle:"loginTitle",
- dLoginSubtitle:"loginSubtitle",dDashboardHeading:"dashboardHeading",
- dRecordsHeading:"recordsHeading",dStockHeading:"stockHeading",
- dFont:"font",dFontSize:"fontSize",dTitleSize:"titleSize",dWidth:"width",
- dRadius:"radius",dGap:"gap"};
+ const map={dTitle:"title",dSubtitle:"subtitle",dLoginTitle:"loginTitle",dLoginSubtitle:"loginSubtitle",dDashboardHeading:"dashboardHeading",dRecordsHeading:"recordsHeading",dStockHeading:"stockHeading",dFont:"font",dFontSize:"fontSize",dTitleSize:"titleSize",dWidth:"width",dRadius:"radius",dGap:"gap"};
  Object.entries(map).forEach(([id,k])=>$(id).value=d[k]);
  COLORS.forEach(([k])=>{$("color_"+k).value=d[k];$("hex_"+k).value=d[k];});
 }
 function readDesign(){
  const d={...DEFAULT_DESIGN};
- const map={dTitle:"title",dSubtitle:"subtitle",dLoginTitle:"loginTitle",
- dLoginSubtitle:"loginSubtitle",dDashboardHeading:"dashboardHeading",
- dRecordsHeading:"recordsHeading",dStockHeading:"stockHeading",dFont:"font",
- dFontSize:"fontSize",dTitleSize:"titleSize",dWidth:"width",dRadius:"radius",dGap:"gap"};
- Object.entries(map).forEach(([id,k])=>{
-  d[k]=k==="font"||["title","subtitle","loginTitle","loginSubtitle","dashboardHeading","recordsHeading","stockHeading"].includes(k)
-   ?$(id).value:Number($(id).value);
- });
+ const map={dTitle:"title",dSubtitle:"subtitle",dLoginTitle:"loginTitle",dLoginSubtitle:"loginSubtitle",dDashboardHeading:"dashboardHeading",dRecordsHeading:"recordsHeading",dStockHeading:"stockHeading",dFont:"font",dFontSize:"fontSize",dTitleSize:"titleSize",dWidth:"width",dRadius:"radius",dGap:"gap"};
+ Object.entries(map).forEach(([id,k])=>{d[k]=k==="font"||["title","subtitle","loginTitle","loginSubtitle","dashboardHeading","recordsHeading","stockHeading"].includes(k)?$(id).value:Number($(id).value);});
  COLORS.forEach(([k])=>{const v=$("hex_"+k).value;d[k]=/^#[0-9a-f]{6}$/i.test(v)?v:DEFAULT_DESIGN[k];});
- d.fontSize=Math.min(24,Math.max(11,d.fontSize||14));
- d.titleSize=Math.min(48,Math.max(18,d.titleSize||28));
- d.width=Math.min(2200,Math.max(700,d.width||1600));
- d.radius=Math.min(40,Math.max(0,d.radius||0));
- d.gap=Math.min(40,Math.max(4,d.gap||16));
- return d;
+ d.fontSize=Math.min(24,Math.max(11,d.fontSize||14));d.titleSize=Math.min(48,Math.max(18,d.titleSize||28));d.width=Math.min(2200,Math.max(700,d.width||1600));d.radius=Math.min(40,Math.max(0,d.radius||0));d.gap=Math.min(40,Math.max(4,d.gap||16));
+ d.logos=book.design.logos||[];return d;
 }
 function applyDesign(){
  const d={...DEFAULT_DESIGN,...book.design},r=document.documentElement;
- [["primary",d.primary],["header",d.header],["bg",d.bg],["card",d.card],
- ["text",d.text],["muted",d.muted],["border",d.border],["font",d.font],
- ["font-size",d.fontSize+"px"],["content-width",d.width+"px"],
- ["radius",d.radius+"px"],["gap",d.gap+"px"]].forEach(([k,v])=>r.style.setProperty("--"+k,v));
- $("pageTitle").textContent=d.title;$("pageSubtitle").textContent=d.subtitle;
- $("loginTitle").textContent=d.loginTitle;$("loginSubtitle").textContent=d.loginSubtitle;
- $("dashboardHeading").textContent=d.dashboardHeading;
- $("recordsHeading").textContent=d.recordsHeading;$("stockHeading").textContent=d.stockHeading;
- $("pageTitle").style.fontSize=d.titleSize+"px";
- $("footer").textContent=d.title+" · Gestión de stock";
- renderTabs();
+ [["primary",d.primary],["header",d.header],["bg",d.bg],["card",d.card],["text",d.text],["muted",d.muted],["border",d.border],["font",d.font],["font-size",d.fontSize+"px"],["content-width",d.width+"px"],["radius",d.radius+"px"],["gap",d.gap+"px"]].forEach(([k,v])=>r.style.setProperty("--"+k,v));
+ $("pageTitle").textContent=d.title;$("pageSubtitle").textContent=d.subtitle;$("loginTitle").textContent=d.loginTitle;$("loginSubtitle").textContent=d.loginSubtitle;$("dashboardHeading").textContent=d.dashboardHeading;$("recordsHeading").textContent=d.recordsHeading;$("stockHeading").textContent=d.stockHeading;$("pageTitle").style.fontSize=d.titleSize+"px";$("footer").textContent=d.title+" · Gestión de stock";
+ renderTabs();renderLogos();
 }
-function previewDesign(){book.design=readDesign();applyDesign();}
-$("previewDesignBtn").onclick=()=>{previewDesign();message("designStatus","Vista previa aplicada. Guardá para conservarla.");};
-$("saveDesignBtn").onclick=async()=>{
- try{book.design=readDesign();applyDesign();await saveBook();message("designStatus","Diseño, pestañas y paneles guardados.");}
- catch(e){message("designStatus",e.message,true);}
+function previewDesign(){book.design={...book.design,...readDesign()};applyDesign();}
+$("previewDesignBtn").onclick=()=>{previewDesign();message("designStatus","Vista previa aplicada; guardá para conservarla.");};
+$("saveDesignBtn").onclick=async()=>{try{book.design={...book.design,...readDesign()};applyDesign();await saveBook();message("designStatus","Diseño guardado.");}catch(e){message("designStatus",e.message,true);}};
+$("resetDesignBtn").onclick=()=>{if(!confirm("¿Restablecer colores y tipografía?"))return;const logos=book.design.logos||[];book.design={...DEFAULT_DESIGN,logos};populateDesign();applyDesign();message("designStatus","Valores predeterminados aplicados. Guardá para conservarlos.");};
+["dTitle","dSubtitle","dLoginTitle","dLoginSubtitle","dDashboardHeading","dRecordsHeading","dStockHeading","dFont","dFontSize","dTitleSize","dWidth","dRadius","dGap"].forEach(id=>$(id).addEventListener("input",previewDesign));
+
+/* LOGOS: SUBIR, POSICIONAR, MOVER Y GUARDAR */
+function renderLogos(){
+ document.querySelectorAll(".logo-object").forEach(el=>el.remove());
+ (book.design.logos||[]).forEach(l=>{
+  const img=document.createElement("img");img.className="logo-object";img.id="logo_"+l.id;img.alt=l.name||"Logo";
+  img.src=l.data;img.style.width=(Number(l.width)||150)+"px";img.style.left=(Number(l.x)||0)+"vw";img.style.top=(Number(l.y)||0)+"vh";
+  if(l.visible===false)img.classList.add("hidden");
+  img.addEventListener("pointerdown",e=>{
+   if(!currentUser)return;
+   logoDrag={id:l.id,dx:e.clientX-img.getBoundingClientRect().left,dy:e.clientY-img.getBoundingClientRect().top};
+   img.setPointerCapture(e.pointerId);img.classList.add("selected");e.preventDefault();
+  });
+  img.addEventListener("pointermove",e=>{
+   if(!logoDrag||logoDrag.id!==l.id)return;
+   const maxX=Math.max(0,window.innerWidth-img.offsetWidth),maxY=Math.max(0,window.innerHeight-img.offsetHeight);
+   const x=Math.max(0,Math.min(maxX,e.clientX-logoDrag.dx)),y=Math.max(0,Math.min(maxY,e.clientY-logoDrag.dy));
+   img.style.left=(x/window.innerWidth*100)+"vw";img.style.top=(y/window.innerHeight*100)+"vh";
+   l.x=+(x/window.innerWidth*100).toFixed(2);l.y=+(y/window.innerHeight*100).toFixed(2);
+   $("logoX").value=l.x;$("logoY").value=l.y;
+  });
+  async function finish(){if(!logoDrag||logoDrag.id!==l.id)return;logoDrag=null;img.classList.remove("selected");}
+  img.addEventListener("pointerup",finish);img.addEventListener("pointercancel",finish);
+  document.body.appendChild(img);
+ });
+ const list=$("logoList");
+ list.innerHTML=(book.design.logos||[]).map(l=>'<div class="editor-row"><div><label>Nombre</label><input data-logo-name="'+l.id+'" value="'+esc(l.name||"Logo")+'"></div><div><label>Ancho (px)</label><input type="number" min="20" max="700" data-logo-width="'+l.id+'" value="'+(Number(l.width)||150)+'"></div><div><label>Horizontal (%)</label><input type="number" min="0" max="95" data-logo-x="'+l.id+'" value="'+(Number(l.x)||0)+'"></div><div><label>Vertical (%)</label><input type="number" min="0" max="95" data-logo-y="'+l.id+'" value="'+(Number(l.y)||0)+'"></div><div><button class="secondary" data-logo-select="'+l.id+'">Editar en campos superiores</button> <button class="danger" data-logo-delete="'+l.id+'">Eliminar</button></div></div>').join("");
+ list.querySelectorAll("[data-logo-name]").forEach(i=>i.onchange=()=>{const l=book.design.logos.find(x=>x.id===i.dataset.logoName);if(l)l.name=i.value;});
+ list.querySelectorAll("[data-logo-width]").forEach(i=>i.onchange=()=>{const l=book.design.logos.find(x=>x.id===i.dataset.logoWidth);if(l){l.width=Math.max(20,Math.min(700,Number(i.value)||150));renderLogos();}});
+ list.querySelectorAll("[data-logo-x]").forEach(i=>i.onchange=()=>{const l=book.design.logos.find(x=>x.id===i.dataset.logoX);if(l){l.x=Math.max(0,Math.min(95,Number(i.value)||0));renderLogos();}});
+ list.querySelectorAll("[data-logo-y]").forEach(i=>i.onchange=()=>{const l=book.design.logos.find(x=>x.id===i.dataset.logoY);if(l){l.y=Math.max(0,Math.min(95,Number(i.value)||0));renderLogos();}});
+ list.querySelectorAll("[data-logo-select]").forEach(b=>b.onclick=()=>{const l=book.design.logos.find(x=>x.id===b.dataset.logoSelect);if(!l)return;$("logoName").value=l.name||"";$("logoWidth").value=l.width||150;$("logoX").value=l.x||0;$("logoY").value=l.y||0;});
+ list.querySelectorAll("[data-logo-delete]").forEach(b=>b.onclick=()=>{if(confirm("¿Eliminar esta imagen?")){book.design.logos=book.design.logos.filter(l=>l.id!==b.dataset.logoDelete);renderLogos();}});
+}
+$("addLogoBtn").onclick=()=>{
+ const file=$("logoFile").files[0];
+ if(!file){alert("Primero seleccioná una imagen.");return;}
+ if(file.size>500*1024){alert("La imagen supera 500 KB. Reducí su tamaño antes de subirla.");return;}
+ const reader=new FileReader();
+ reader.onload=()=>{
+  const l={id:uid(),name:$("logoName").value.trim()||file.name,width:Math.max(20,Math.min(700,Number($("logoWidth").value)||150)),x:Math.max(0,Math.min(95,Number($("logoX").value)||0)),y:Math.max(0,Math.min(95,Number($("logoY").value)||0)),data:reader.result,visible:true};
+  book.design.logos=book.design.logos||[];book.design.logos.push(l);renderLogos();$("logoFile").value="";
+ };
+ reader.readAsDataURL(file);
 };
-$("resetDesignBtn").onclick=()=>{
- if(!confirm("¿Restablecer colores y tipografía?"))return;
- book.design={...DEFAULT_DESIGN};populateDesign();applyDesign();
- message("designStatus","Valores predeterminados aplicados. Guardá para conservarlos.");
-};
-["dTitle","dSubtitle","dLoginTitle","dLoginSubtitle","dDashboardHeading","dRecordsHeading","dStockHeading",
- "dFont","dFontSize","dTitleSize","dWidth","dRadius","dGap"].forEach(id=>{
- $(id).addEventListener("input",previewDesign);
-});
+$("showLogosBtn").onclick=()=>{(book.design.logos||[]).forEach(l=>l.visible=true);renderLogos();};
+$("hideLogosBtn").onclick=()=>{(book.design.logos||[]).forEach(l=>l.visible=false);renderLogos();};
+$("saveLogosBtn").onclick=async()=>{try{await saveBook();message("designStatus","Imágenes y posiciones guardadas.");}catch(e){message("designStatus",e.message,true);}};
 </script>
 </body>
 </html>
