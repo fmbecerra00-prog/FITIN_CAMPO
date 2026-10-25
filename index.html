@@ -74,6 +74,7 @@ body.records-active .records-only-toolbar {display:flex!important}
 .widget .panel {height:100%}
 .widget canvas {max-height:340px}
 #availabilityChart {width:100%;max-height:420px}
+#dashboardStockChart {width:100%!important;height:100%!important}
 .request-lines td,.request-lines th{vertical-align:middle}.request-lines input,.request-lines select{min-width:110px}.request-meta{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.request-actions{white-space:nowrap}
 #inventoryTable td {white-space:nowrap}
 #availabilityChosen button {margin:3px}
@@ -152,21 +153,18 @@ footer {text-align:center;color:var(--muted);padding:22px}
   <section id="dashboardTab">
     <div class="panel">
       <h2 id="dashboardHeading">Panel principal</h2>
+      <p class="muted">Disponibilidad general de productos. Elegí qué existencia querés visualizar; las barras se ordenan de mayor a menor.</p>
       <div class="design-grid no-print">
-        <div><label>Hoja para recuentos</label><select id="countSheet"></select></div>
-        <div><label>Columna</label><select id="countColumn"></select></div>
-        <div><label>Tipo de recuento</label>
-          <select id="countType">
-            <option value="rows">Cantidad de registros</option>
-            <option value="unique">Valores únicos</option>
-            <option value="sum">Suma de columna numérica</option>
-          </select>
-        </div>
-        <div><label>Columna numérica</label><select id="countSumColumn"></select></div>
+        <div><label for="dashboardStockMetric">Existencia a graficar</label><select id="dashboardStockMetric">
+          <option value="total">Stock total</option>
+          <option value="consignacion">Consignación</option>
+          <option value="fabricacion">Fabricación</option>
+          <option value="embarques">Embarques</option>
+          <option value="trenque">Trenque Lauquen</option>
+        </select></div>
       </div>
-      <div class="toolbar no-print"><button id="saveCountConfig">Guardar configuración</button></div>
-      <p id="countStatus" class="status"></p>
-      <div id="defaultStats" class="grid"></div>
+      <div id="dashboardStockChartWrap" style="position:relative;height:440px;min-height:300px"><canvas id="dashboardStockChart" aria-label="Stock de todos los productos ordenado de mayor a menor"></canvas></div>
+      <p id="dashboardStockStatus" class="status"></p>
     </div>
 
     <div class="panel">
@@ -177,7 +175,7 @@ footer {text-align:center;color:var(--muted);padding:22px}
         <div><label>Columna de producto</label><select id="productNameCol"></select></div>
         <div><label>Columna de código</label><select id="productCodeCol"></select></div>
         <div><label>Columna de stock</label><select id="productStockCol"></select></div>
-        <div><label>Columna de cliente</label><select id="productClientCol"></select></div>
+        <div><label>Columna de stock alternativa</label><select id="productStockAltCol"></select></div>
         <div><label>Columna de consignación</label><select id="productConsignCol"></select></div>
       </div>
       <div class="toolbar no-print">
@@ -461,7 +459,7 @@ function makeDefaultBook() {
     solicitudes:[],
     requestCounter:0,
     stockConfig:{sheet:0,product:"",code:"",qty:""},
-    productConfig:{sheet:0,name:"",code:"",stock:"",client:"",consign:""},
+    productConfig:{sheet:0,name:"",code:"",stock:"",stockAlt:"",consign:""},
     locationConfig:{trenque:"",consignacion:"",fabricacion:"",embarques:""},
     countConfig:{sheet:0,column:"",type:"rows",sumColumn:""}
   };
@@ -761,7 +759,7 @@ function showTab(id) {
   renderTabs();
   if(id==="records") renderRecords();
   if(id==="dashboard") {
-    setupCountControls();setupProductControls();renderDashboard();renderWidgetsInto("dashboardWidgets","dashboard");
+    setupProductControls();renderDashboard();renderWidgetsInto("dashboardWidgets","dashboard");
   }
   if(id==="stock") {setupStockControls();renderStock();}
   if(id==="solicitud") {renderRequestLines();renderRequestsTable();}
@@ -780,7 +778,6 @@ function renderAll() {
   renderSheetSelect();
   renderAvailabilityDates();
   renderRecords();
-  setupCountControls();
   setupProductControls();
   setupStockControls();
   renderDashboard();
@@ -797,7 +794,7 @@ function setActiveSheet(index) {
 $("sheetSelect").onchange=()=>setActiveSheet($("sheetSelect").value);
 $("globalSheetSelect").onchange=()=>{
   setActiveSheet($("globalSheetSelect").value);
-  if(activeTab==="dashboard") { setupCountControls(); setupProductControls(); renderDashboard(); renderWidgetsInto("dashboardWidgets","dashboard"); }
+  if(activeTab==="dashboard") { setupProductControls(); renderDashboard(); renderWidgetsInto("dashboardWidgets","dashboard"); }
   else if(activeTab==="stock") { setupStockControls(); renderStock(); }
 };
 function renderRecords() {
@@ -859,7 +856,7 @@ $("newSheetBtn").onclick=()=>{
 };
 $("renameSheetBtn").onclick=()=>{
   const n=prompt("Nuevo nombre:",sheet().name);
-  if(n?.trim()) {sheet().name=n.trim();renderSheetSelect();setupCountControls();setupProductControls();setupStockControls();}
+  if(n?.trim()) {sheet().name=n.trim();renderSheetSelect();setupProductControls();setupStockControls();}
 };
 $("deleteSheetBtn").onclick=()=>{
   if(book.sheets.length<2) {alert("Debe quedar al menos una hoja.");return;}
@@ -972,42 +969,33 @@ function guessCol(cols,terms) {
   return cols.find(c=>terms.some(t=>norm(c).includes(t)))||"";
 }
 
-/* INDICADORES */
-function setupCountControls() {
-  const c=book.countConfig||{};
-  fillSheetSelect("countSheet",c.sheet||0);
-  const cols=columns(activeRows($("countSheet").value));
-  fillSelect("countColumn",cols,c.column);
-  fillSelect("countSumColumn",cols,c.sumColumn);
-  $("countType").value=c.type||"rows";
-}
-$("countSheet").onchange=()=>{
-  const cols=columns(activeRows($("countSheet").value));
-  fillSelect("countColumn",cols);fillSelect("countSumColumn",cols);renderDashboard();
-};
-["countColumn","countType","countSumColumn"].forEach(id=>$(id).onchange=renderDashboard);
-$("saveCountConfig").onclick=async()=>{
-  book.countConfig={sheet:Number($("countSheet").value),column:$("countColumn").value,type:$("countType").value,sumColumn:$("countSumColumn").value};
-  try {await saveBook();message("countStatus","Configuración guardada.");}
-  catch(e){message("countStatus",e.message,true);}
-};
+/* GRÁFICO PRINCIPAL DE STOCK */
+let dashboardStockChartInstance = null;
 function renderDashboard() {
-  const c=book.countConfig||{},rows=activeRows(c.sheet??0),col=c.column||"";
-  let value=rows.length,label="Registros en la hoja";
-  if(c.type==="unique") {
-    value=new Set(rows.map(r=>String(r[col]??"").trim()).filter(Boolean)).size;
-    label="Valores únicos: "+(col||"columna no elegida");
+  const rows=inventoryRows();
+  const metric=$("dashboardStockMetric")?.value||"total";
+  const meta={
+    total:{label:"Stock total",color:"#687b35",value:r=>r.trenque+r.consignacion+r.fabricacion+r.embarques},
+    consignacion:{label:"Consignación",color:"#9a6b3d",value:r=>r.consignacion},
+    fabricacion:{label:"Fabricación",color:"#7b873b",value:r=>r.fabricacion},
+    embarques:{label:"Embarques",color:"#a47b45",value:r=>r.embarques},
+    trenque:{label:"Trenque Lauquen",color:"#596b2e",value:r=>r.trenque}
+  }[metric] || {label:"Stock total",color:"#687b35",value:r=>r.trenque+r.consignacion+r.fabricacion+r.embarques};
+  const sorted=rows.map(r=>({name:r.name,code:r.code,value:Number(meta.value(r)||0)}))
+    .sort((a,b)=>b.value-a.value || a.name.localeCompare(b.name,"es"));
+  if(dashboardStockChartInstance) dashboardStockChartInstance.destroy();
+  const canvas=$("dashboardStockChart");
+  if(canvas && window.Chart) {
+    dashboardStockChartInstance=new Chart(canvas,{
+      type:"bar",
+      data:{labels:sorted.map(r=>r.name),datasets:[{label:meta.label,data:sorted.map(r=>r.value),backgroundColor:sorted.map((_,i)=>["#596b2e","#71813a","#8a713d","#9a6b3d","#a47b45"][i%5]),borderColor:"#ffffff",borderWidth:1}]},
+      options:{responsive:true,maintainAspectRatio:false,indexAxis:"x",layout:{padding:{top:22}},plugins:{legend:{display:false},tooltip:{callbacks:{afterLabel:(ctx)=>{const row=sorted[ctx.dataIndex];return row.code?"Código: "+row.code:"";}}}},scales:{x:{ticks:{autoSkip:false,maxRotation:65,minRotation:35},title:{display:true,text:"Productos"}},y:{beginAtZero:true,title:{display:true,text:"Cantidad"}}}},
+      plugins:[{id:"dashboardBarValueLabels",afterDatasetsDraw(chart){const ctx=chart.ctx;ctx.save();ctx.font="600 11px Arial";ctx.textAlign="center";ctx.textBaseline="bottom";chart.data.datasets.forEach((dataset,di)=>chart.getDatasetMeta(di).data.forEach((bar,i)=>{const v=dataset.data[i];if(v===null||v===undefined)return;ctx.fillStyle="#352f25";ctx.fillText(Number(v).toLocaleString("es-AR"),bar.x,Math.max(chart.chartArea.top+12,bar.y-4));}));ctx.restore();}}]
+    });
   }
-  if(c.type==="sum") {
-    value=rows.reduce((s,r)=>s+numberValue(r[c.sumColumn]),0);
-    label="Suma de "+(c.sumColumn||"columna no elegida");
-  }
-  $("defaultStats").innerHTML=[
-    ["Recuento configurado",value,label],
-    ["Registros en hoja activa",activeRows(book.active).length,sheet().name],
-    ["Hojas disponibles",book.sheets.length,"En esta aplicación"]
-  ].map(([a,b,c])=>`<div class="stat"><span class="muted">${esc(a)}</span><strong>${esc(b)}</strong><small>${esc(c)}</small></div>`).join("");
+  $("dashboardStockStatus").textContent=`${sorted.length} productos · ${meta.label} · ordenados de mayor a menor.`;
 }
+$("dashboardStockMetric").onchange=renderDashboard;
 
 /* BUSCADOR DE PRODUCTOS */
 function setupProductControls() {
@@ -1015,27 +1003,27 @@ function setupProductControls() {
   fillSheetSelect("productSheet",c.sheet||0);
   const cols=columns(activeRows($("productSheet").value));
   fillSelect("productNameCol",cols,c.name);fillSelect("productCodeCol",cols,c.code);
-  fillSelect("productStockCol",cols,c.stock);fillSelect("productClientCol",cols,c.client);
+  fillSelect("productStockCol",cols,c.stock);fillSelect("productStockAltCol",cols,c.stockAlt);
   fillSelect("productConsignCol",cols,c.consign);
   if(!c.name) $("productNameCol").value=guessCol(cols,["producto","articulo","descripcion","nombre"]);
   if(!c.code) $("productCodeCol").value=guessCol(cols,["codigo","sku","cod"]);
   if(!c.stock) $("productStockCol").value=guessCol(cols,["stock","cantidad","existencia","unidades"]);
-  if(!c.client) $("productClientCol").value=guessCol(cols,["cliente"]);
+  if(!c.stockAlt) $("productStockAltCol").value=guessCol(cols,["stock","cantidad","existencia","unidades"].filter(x=>x!==String($("productStockCol").value||"").toLowerCase()));
   if(!c.consign) $("productConsignCol").value=guessCol(cols,["consignacion","consigna","consignado"]);
   renderProductOptions();
   locationColumns();
   renderInventory();
 }
 $("productSheet").onchange=()=>{
-  book.productConfig={sheet:Number($("productSheet").value),name:"",code:"",stock:"",client:"",consign:""};
+  book.productConfig={sheet:Number($("productSheet").value),name:"",code:"",stock:"",stockAlt:"",consign:""};
   setupProductControls();
 };
-["productNameCol","productCodeCol","productStockCol","productClientCol","productConsignCol"].forEach(id=>$(id).onchange=renderProductOptions);
+["productNameCol","productCodeCol","productStockCol","productStockAltCol","productConsignCol"].forEach(id=>$(id).onchange=renderProductOptions);
 $("refreshProducts").onclick=()=>{setupProductControls();message("productStatus","Listado actualizado.");};
 $("saveProductConfig").onclick=async()=>{
   book.productConfig={
     sheet:Number($("productSheet").value),name:$("productNameCol").value,code:$("productCodeCol").value,
-    stock:$("productStockCol").value,client:$("productClientCol").value,consign:$("productConsignCol").value
+    stock:$("productStockCol").value,stockAlt:$("productStockAltCol").value,consign:$("productConsignCol").value
   };
   try {await saveBook();message("productStatus","Configuración guardada.");}
   catch(e){message("productStatus",e.message,true);}
@@ -1044,7 +1032,7 @@ function renderProductOptions() {
   const c={
     sheet:Number($("productSheet").value||0),name:$("productNameCol").value,
     code:$("productCodeCol").value,stock:$("productStockCol").value,
-    client:$("productClientCol").value,consign:$("productConsignCol").value
+    stockAlt:$("productStockAltCol").value,consign:$("productConsignCol").value
   };
   const rows=activeRows(c.sheet);
   const products=[...new Set(rows.map(r=>String(r[c.name]??"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"es"));
@@ -1103,6 +1091,7 @@ function renderInventory() {
   }).join("")+'</tbody></table>';
   applyColumnWidths($("inventoryTable").querySelector("table"),"inventory",headers);
   renderAvailabilityOptions();
+  renderDashboard();
 }
 function renderAvailabilityOptions() {
   const c={sheet:Number($("productSheet").value||0),name:$("productNameCol").value};
@@ -1201,15 +1190,9 @@ function applyPublicMode() {
   $("sheetSelect").disabled=false;
   $("logoutBtn").style.display="none";
   // Ocultar configuraciones de columnas y guardado, sin bloquear filtros ni comparaciones.
-  ["countSheet","countColumn","countType","countSumColumn","saveCountConfig",
-   "locTrenque","locConsignacion","locFabricacion","locEmbarques","saveLocationsBtn"].forEach(id=>{
-    const el=$(id); if(!el) return;
-    const wrapper=el.closest(".design-grid")||el.closest(".toolbar")||el;
-    wrapper.style.display="none";
-  });
-  ["productNameCol","productCodeCol","productStockCol","productClientCol","productConsignCol"].forEach(id=>{
-    const el=$(id); if(el) (el.parentElement||el).style.display="none";
-  });
+  ["saveCountConfig","saveLocationsBtn","saveProductConfig"].forEach(id=>{const el=$(id);if(el){el.disabled=true;el.style.display="none";}});
+  // Los selectores que afectan la visualización se conservan; no otorgan permisos para editar los datos guardados.
+  ["productNameCol","productCodeCol","productStockCol","productStockAltCol","productConsignCol"].forEach(id=>{const el=$(id);if(el)el.disabled=false;});
   const saveProductConfig=$("saveProductConfig"); if(saveProductConfig) saveProductConfig.style.display="none";
   // Bloquea edición de celdas y cualquier botón de escritura si quedara visible por cambios futuros.
   document.querySelectorAll("[contenteditable], input[type=file]").forEach(el=>{el.removeAttribute("contenteditable");el.disabled=true;});
@@ -1240,9 +1223,10 @@ function showProduct(product,c) {
   const rows=activeRows(c.sheet).filter(r=>String(r[c.name]??"").trim()===product);
   const unique=k=>[...new Set(rows.map(r=>String(r[k]??"").trim()).filter(Boolean))].join(", ")||"Sin dato";
   const stock=c.stock?rows.reduce((s,r)=>s+numberValue(r[c.stock]),0):"No configurado";
+  const stockAlt=c.stockAlt?rows.reduce((s,r)=>s+numberValue(r[c.stockAlt]),0):"No configurado";
   const details=[
     ["Producto",product],["Código",c.code?unique(c.code):"No configurado"],
-    ["Stock total",stock],["Cliente",c.client?unique(c.client):"No configurado"],
+    ["Stock (columna principal)",stock],["Stock (columna alternativa)",stockAlt],
     ["Consignación",c.consign?unique(c.consign):"No configurado"]
   ];
   $("productCard").innerHTML=details.map(([a,b])=>`<div class="stat"><span class="muted">${esc(a)}</span><strong style="font-size:20px">${esc(b)}</strong></div>`).join("");
