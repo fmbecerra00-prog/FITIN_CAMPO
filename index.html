@@ -79,7 +79,7 @@ body.records-active .records-only-toolbar {display:flex!important}
 .widget canvas {max-height:340px}
 #availabilityChart {width:100%;max-height:420px}
 #dashboardStockChart {width:100%!important;height:100%!important}
-.request-lines td,.request-lines th{vertical-align:middle}.request-lines input,.request-lines select{min-width:110px}.request-meta{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.request-actions{white-space:nowrap}
+.request-lines td,.request-lines th{vertical-align:top}.request-lines input,.request-lines select{min-width:110px}.request-lines td:nth-child(4){min-width:300px;width:34%}.request-product-picker{min-width:260px;max-width:520px}.request-product-picker input{width:100%;min-width:240px}.request-product-options{display:none;position:relative;max-height:220px;overflow:auto;background:#fff;border:1px solid var(--border);border-radius:8px;margin-top:5px;box-shadow:0 5px 14px #17233a18;z-index:20}.request-product-picker.open .request-product-options{display:block}.request-product-option{display:block;width:100%;text-align:left;white-space:normal;overflow-wrap:anywhere;background:#fff;color:var(--text);border:0;border-bottom:1px solid var(--border);border-radius:0;padding:9px 10px}.request-product-option:hover,.request-product-option:focus{background:#eef2e6}.request-product-empty{padding:10px;color:var(--muted)}.request-meta{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.request-actions{white-space:nowrap}
 #inventoryTable td {white-space:nowrap}
 #availabilityChosen button {margin:3px}
 .editor-row {display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:10px;border:1px solid var(--border);border-radius:10px;padding:12px;margin:10px 0}
@@ -1300,9 +1300,12 @@ function buildRequestCatalog() {
   });
   return items.sort((a,b)=>a.name.localeCompare(b.name,'es')||a.code.localeCompare(b.code,'es')||a.sheetName.localeCompare(b.sheetName,'es'));
 }
-function requestProductOptions(selectedKey) {
+function requestProductOptions(selectedKey, query="") {
   requestCatalog=buildRequestCatalog();
-  return '<option value="">— Elegir producto —</option>'+requestCatalog.map((p,i)=>`<option value="${i}" ${p.key===selectedKey?'selected':''}>${esc(p.name)}${p.code?' · '+esc(p.code):''}${p.sheetName?' ('+esc(p.sheetName)+')':''}</option>`).join("");
+  const q=norm(query);
+  const filtered=requestCatalog.map((p,i)=>({...p,index:i})).filter(p=>!q||norm([p.name,p.code,p.sheetName].join(" ")).includes(q));
+  if(!filtered.length) return '<div class="request-product-empty">No se encontraron productos. Probá con otra palabra.</div>';
+  return filtered.map(p=>`<button type="button" class="request-product-option" data-request-pick="${p.index}"><strong>${esc(p.name)}</strong>${p.code?' · Código: '+esc(p.code):''}${p.sheetName?' <span class="muted">· Hoja: '+esc(p.sheetName)+'</span>':''}</button>`).join("");
 }
 function addRequestLine(line={operation:"Fabricación",productKey:"",code:"",quantity:1}) {
   requestDraftLines.push({...line,id:line.id||uid()});
@@ -1311,16 +1314,32 @@ function addRequestLine(line={operation:"Fabricación",productKey:"",code:"",qua
 function renderRequestLines() {
   const box=$("requestLinesEditor"); if(!box) return;
   if(!requestDraftLines.length) requestDraftLines.push({id:uid(),operation:"Fabricación",productKey:"",code:"",quantity:1});
+  requestCatalog=buildRequestCatalog();
   let html='<table class="request-lines"><thead><tr><th>N.º de solicitud</th><th>Fecha y hora</th><th>Operación</th><th>Producto</th><th>Código</th><th>Cantidad</th><th class="no-print">Acción</th></tr></thead><tbody>';
   requestDraftLines.forEach((l,i)=>{
-    html+=`<tr><td>${editingRequestId?esc((book.solicitudes.find(r=>r.id===editingRequestId)||{}).number||'En edición'):'Se asigna al guardar'}</td><td>${editingRequestId?esc(formatRequestDate((book.solicitudes.find(r=>r.id===editingRequestId)||{}).savedAt)):'Al guardar'}</td><td><select data-request-operation="${i}">${REQUEST_OPERATIONS.map(op=>`<option ${l.operation===op?'selected':''}>${op}</option>`).join('')}</select></td><td><select data-request-product="${i}">${requestProductOptions(l.productKey)}</select></td><td><input data-request-code="${i}" value="${esc(l.code||'')}" readonly aria-label="Código del producto"></td><td><input data-request-quantity="${i}" type="number" min="1" step="1" value="${Math.max(1,Number(l.quantity)||1)}" aria-label="Cantidad solicitada"></td><td class="no-print"><button class="danger" data-request-remove="${i}">Quitar</button></td></tr>`;
+    const chosen=requestCatalog.find(p=>p.key===l.productKey);
+    const display=chosen?(chosen.name+(chosen.code?' · '+chosen.code:'')):(l.product||'');
+    html+=`<tr><td>${editingRequestId?esc((book.solicitudes.find(r=>r.id===editingRequestId)||{}).number||'En edición'):'Se asigna al guardar'}</td><td>${editingRequestId?esc(formatRequestDate((book.solicitudes.find(r=>r.id===editingRequestId)||{}).savedAt)):'Al guardar'}</td><td><select data-request-operation="${i}">${REQUEST_OPERATIONS.map(op=>`<option ${l.operation===op?'selected':''}>${op}</option>`).join('')}</select></td><td><div class="request-product-picker" data-request-picker="${i}"><input type="text" data-request-product-search="${i}" value="${esc(display)}" placeholder="Buscar producto por descripción o código…" autocomplete="off" aria-label="Buscar producto"><div class="request-product-options" data-request-options="${i}"></div></div></td><td><input data-request-code="${i}" value="${esc(l.code||chosen?.code||'')}" readonly aria-label="Código del producto"></td><td><input data-request-quantity="${i}" type="number" min="1" step="1" value="${Math.max(1,Number(l.quantity)||1)}" aria-label="Cantidad solicitada"></td><td class="no-print"><button class="danger" data-request-remove="${i}">Quitar</button></td></tr>`;
   });
   box.innerHTML=html+'</tbody></table>';
   box.querySelectorAll('[data-request-operation]').forEach(el=>el.onchange=()=>{requestDraftLines[Number(el.dataset.requestOperation)].operation=el.value;});
-  box.querySelectorAll('[data-request-product]').forEach(el=>el.onchange=()=>{
-    const i=Number(el.dataset.requestProduct),p=requestCatalog[Number(el.value)];
-    requestDraftLines[i].productKey=p?.key||"";requestDraftLines[i].code=p?.code||"";requestDraftLines[i].product=p?.name||"";
-    renderRequestLines();
+  const openPicker=(i,query="")=>{
+    const picker=box.querySelector(`[data-request-picker="${i}"]`); if(!picker)return;
+    picker.classList.add('open');
+    const options=picker.querySelector('[data-request-options]');
+    options.innerHTML=requestProductOptions(requestDraftLines[i].productKey,query);
+    options.querySelectorAll('[data-request-pick]').forEach(btn=>btn.onclick=()=>{
+      const p=requestCatalog[Number(btn.dataset.requestPick)]; if(!p)return;
+      requestDraftLines[i].productKey=p.key;requestDraftLines[i].code=p.code||'';requestDraftLines[i].product=p.name;
+      renderRequestLines();
+    });
+  };
+  box.querySelectorAll('[data-request-product-search]').forEach(el=>{
+    const i=Number(el.dataset.requestProductSearch);
+    el.onfocus=()=>openPicker(i,el.value);
+    el.onclick=()=>openPicker(i,el.value);
+    el.oninput=()=>{requestDraftLines[i].productKey="";requestDraftLines[i].code="";requestDraftLines[i].product="";openPicker(i,el.value);const code=box.querySelector(`[data-request-code="${i}"]`);if(code)code.value="";};
+    el.onkeydown=e=>{if(e.key==='Escape'){const picker=box.querySelector(`[data-request-picker="${i}"]`);picker?.classList.remove('open');} else if(e.key==='Enter'){const first=box.querySelector(`[data-request-picker="${i}"] [data-request-pick]`);if(first){e.preventDefault();first.click();}}};
   });
   box.querySelectorAll('[data-request-quantity]').forEach(el=>el.onchange=()=>{requestDraftLines[Number(el.dataset.requestQuantity)].quantity=Math.max(1,Math.floor(Number(el.value)||1));el.value=requestDraftLines[Number(el.dataset.requestQuantity)].quantity;});
   box.querySelectorAll('[data-request-remove]').forEach(el=>el.onclick=()=>{requestDraftLines.splice(Number(el.dataset.requestRemove),1);renderRequestLines();});
