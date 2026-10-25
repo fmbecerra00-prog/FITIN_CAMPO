@@ -41,7 +41,11 @@ small,.muted {color:var(--muted)}
 #app {display:none}
 header {background:var(--header);color:white;padding:20px}
 .header-inner {max-width:var(--content-width);margin:auto;display:flex;justify-content:space-between;align-items:center;gap:15px;flex-wrap:wrap}
-.brand-lockup {display:flex;align-items:center;gap:16px;min-width:0;flex:1}
+.brand-lockup {display:flex;align-items:center;justify-content:space-between;gap:16px;min-width:0;flex:1;order:1}
+.brand-copy {order:1;flex:1}
+.brand-logo {order:2;object-position:center center}
+.header-inner > .toolbar {order:2}
+@media(max-width:700px){.brand-lockup{width:100%}.brand-logo{width:180px;height:54px;max-width:42vw}.brand-copy h1{font-size:22px}}
 .brand-logo {display:block;width:260px;height:62px;max-width:38vw;object-fit:contain;object-position:left center;flex:0 0 auto;border-radius:8px;background:#fff;padding:3px;visibility:visible;opacity:1}
 .brand-copy {min-width:0}
 header h1 {margin:0;font-size:28px}
@@ -676,7 +680,7 @@ async function startApp() {
     renderWidgetEditor();
     renderColumnWidthTargets();renderColumnWidthEditor();
     showTab("dashboard");
-    if(PUBLIC_MODE) applyPublicMode();
+    if(PUBLIC_MODE) { if(activeTab==="stock") activeTab="dashboard"; applyPublicMode(); }
     $("loginStatus").textContent="";
   } catch(err) {
     console.error("Error al cargar FITIN CAMPO:", err);
@@ -698,7 +702,7 @@ async function startApp() {
   try {
     if(PUBLIC_MODE) {
       $("loginTitle").textContent="FITIN CAMPO · Vista pública";
-      $("loginSubtitle").textContent="Consulta de inventario en solo lectura";
+      $("loginSubtitle").textContent="Consulta de inventario";
       $("loginForm").style.display="none";
       await startApp();
       return;
@@ -733,7 +737,7 @@ function allTabs() {
 }
 function renderTabs() {
   $("tabs").innerHTML="";
-  allTabs().filter(t=>!(PUBLIC_MODE && t.id==="design")).forEach(t=>{
+  allTabs().filter(t=>!(PUBLIC_MODE && (t.id==="design" || t.id==="stock"))).forEach(t=>{
     const b=document.createElement("button");
     b.textContent=t.label;
     b.className=t.id===activeTab?"active":"";
@@ -742,7 +746,7 @@ function renderTabs() {
   });
 }
 function showTab(id) {
-  if(PUBLIC_MODE && id==="design") return;
+  if(PUBLIC_MODE && (id==="design" || id==="stock")) return;
   activeTab=id;
   document.body.classList.toggle("records-active",id==="records");
   ["dashboardTab","recordsTab","stockTab","solicitudTab","designTab","customTab"].forEach(x=>$(x).classList.add("hidden"));
@@ -1180,6 +1184,9 @@ function applyPublicMode() {
   const designTabButton=[...$("tabs").querySelectorAll('button')].find(b=>b.textContent===(book.tabLabels.design||'Diseño de página'));
   if(designTabButton) designTabButton.style.display='none';
   $("designTab").style.display="none";
+  $("stockTab").style.display="none";
+  const stockTabButton=[...$("tabs").querySelectorAll("button")].find(b=>b.textContent===(book.tabLabels.stock||"Stock actual"));
+  if(stockTabButton) stockTabButton.style.display="none";
   $("globalSheetToolbar").style.display="";
   document.body.classList.toggle('records-active',activeTab==='records');
   // Ocultar edición de hojas y dejar la exportación disponible.
@@ -1274,21 +1281,24 @@ let editingRequestId = null;
 let requestCatalog = [];
 const REQUEST_OPERATIONS = ["Consignación", "Fabricación", "Embarque"];
 function buildRequestCatalog() {
-  const sh=sheet();
-  const cols=columns(sh?.rows||[]);
-  const findExact=(names)=>cols.find(c=>names.includes(String(c).trim().toLocaleLowerCase('es')))||null;
-  const nameCol=findExact(['descripción','descripcion']);
-  const codeCol=findExact(['código','codigo']);
-  if(!nameCol) return [];
+  // El catálogo de Solicitud se alimenta de todas las hojas importadas en Registros.
+  // Cada código se toma de la misma fila que su Descripción.
   const items=[];
-  (sh.rows||[]).forEach((row,ri)=>{
-    const name=String(row[nameCol]??'').trim();
-    if(!name) return;
-    const code=codeCol?String(row[codeCol]??'').trim():'';
-    const key=norm(name)+'|'+norm(code);
-    if(!items.some(x=>x.key===key)) items.push({key,name,code,sheet:book.active,row:ri,sheetName:sh.name});
+  (book.sheets||[]).forEach((sh,si)=>{
+    const cols=columns(sh?.rows||[]);
+    const findExact=(names)=>cols.find(c=>names.includes(String(c).trim().toLocaleLowerCase('es')))||null;
+    const nameCol=findExact(['descripción','descripcion']);
+    const codeCol=findExact(['código','codigo']);
+    if(!nameCol) return;
+    (sh.rows||[]).forEach((row,ri)=>{
+      const name=String(row[nameCol]??'').trim();
+      if(!name) return;
+      const code=codeCol?String(row[codeCol]??'').trim():'';
+      const key=`${si}|${ri}|${norm(name)}|${norm(code)}`;
+      if(!items.some(x=>x.key===key)) items.push({key,name,code,sheet:si,row:ri,sheetName:sh.name||`Hoja ${si+1}`});
+    });
   });
-  return items.sort((a,b)=>a.name.localeCompare(b.name,'es')||a.code.localeCompare(b.code,'es'));
+  return items.sort((a,b)=>a.name.localeCompare(b.name,'es')||a.code.localeCompare(b.code,'es')||a.sheetName.localeCompare(b.sheetName,'es'));
 }
 function requestProductOptions(selectedKey) {
   requestCatalog=buildRequestCatalog();
