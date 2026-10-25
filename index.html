@@ -72,6 +72,7 @@ td[contenteditable=true]:focus {outline:2px solid var(--primary)}
 .widget .panel {height:100%}
 .widget canvas {max-height:340px}
 #availabilityChart {width:100%;max-height:420px}
+.request-lines td,.request-lines th{vertical-align:middle}.request-lines input,.request-lines select{min-width:110px}.request-meta{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.request-actions{white-space:nowrap}
 #inventoryTable td {white-space:nowrap}
 #availabilityChosen button {margin:3px}
 .editor-row {display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:10px;border:1px solid var(--border);border-radius:10px;padding:12px;margin:10px 0}
@@ -238,6 +239,30 @@ footer {text-align:center;color:var(--muted);padding:22px}
       </div>
       <p id="recordsStatus" class="status"></p>
       <div id="recordsTable" class="table-wrap"></div>
+    </div>
+  </section>
+
+  <section id="solicitudTab" class="hidden">
+    <div class="panel">
+      <h2>Solicitud - Productos en Fabricación/Consignación/Embarques</h2>
+      <p class="muted">Elegí la operación y los productos que necesitás. El código se completa automáticamente desde las hojas importadas.</p>
+      <div class="request-meta">
+        <strong id="requestNumberLabel">Nueva solicitud</strong>
+        <span id="requestDateLabel" class="muted">La fecha y hora se asignan al guardar</span>
+      </div>
+      <div class="toolbar no-print">
+        <button id="addRequestLineBtn">Agregar producto</button>
+        <button id="saveRequestBtn">Guardar solicitud</button>
+        <button id="cancelEditRequestBtn" class="secondary" style="display:none">Cancelar edición</button>
+      </div>
+      <p id="requestStatus" class="status" aria-live="polite"></p>
+      <div id="requestLinesEditor" class="table-wrap"></div>
+    </div>
+    <div class="panel">
+      <h2>Solicitudes guardadas</h2>
+      <p class="muted">Cada producto solicitado se muestra en una fila. Usá «Editar solicitud» para cargar todas las líneas de ese pedido y modificarlas.</p>
+      <div class="toolbar no-print"><input id="requestSearch" placeholder="Buscar por número, producto, código u operación..."></div>
+      <div id="requestsTable" class="table-wrap"></div>
     </div>
   </section>
 
@@ -429,6 +454,8 @@ function makeDefaultBook() {
     tabLabels:{...DEFAULT_LABELS},
     customTabs:[],
     widgets:[],
+    solicitudes:[],
+    requestCounter:0,
     stockConfig:{sheet:0,product:"",code:"",qty:""},
     productConfig:{sheet:0,name:"",code:"",stock:"",client:"",consign:""},
     locationConfig:{trenque:"",consignacion:"",fabricacion:"",embarques:""},
@@ -588,6 +615,8 @@ async function loadBook() {
     tabLabels:{...DEFAULT_LABELS,...(saved.tabLabels||{})},
     customTabs:Array.isArray(saved.customTabs)?saved.customTabs:[],
     widgets:Array.isArray(saved.widgets)?saved.widgets:[],
+    solicitudes:Array.isArray(saved.solicitudes)?saved.solicitudes:[],
+    requestCounter:Number(saved.requestCounter)||0,
     countConfig:saved.countConfig||defaults.countConfig,
     productConfig:saved.productConfig||defaults.productConfig,
     locationConfig:saved.locationConfig||defaults.locationConfig,
@@ -680,6 +709,7 @@ function allTabs() {
     {id:"dashboard",label:book.tabLabels.dashboard||"Inicio"},
     {id:"records",label:book.tabLabels.records||"Registros"},
     {id:"stock",label:book.tabLabels.stock||"Stock actual"},
+    {id:"solicitud",label:"Solicitud"},
     ...book.customTabs,
     {id:"design",label:book.tabLabels.design||"Diseño de página"}
   ];
@@ -696,9 +726,9 @@ function renderTabs() {
 }
 function showTab(id) {
   activeTab=id;
-  ["dashboardTab","recordsTab","stockTab","designTab","customTab"].forEach(x=>$(x).classList.add("hidden"));
+  ["dashboardTab","recordsTab","stockTab","solicitudTab","designTab","customTab"].forEach(x=>$(x).classList.add("hidden"));
 
-  if(["dashboard","records","stock","design"].includes(id)) {
+  if(["dashboard","records","stock","solicitud","design"].includes(id)) {
     $(id+"Tab").classList.remove("hidden");
   } else {
     $("customTab").classList.remove("hidden");
@@ -713,6 +743,7 @@ function showTab(id) {
     setupCountControls();setupProductControls();renderDashboard();renderWidgetsInto("dashboardWidgets","dashboard");
   }
   if(id==="stock") {setupStockControls();renderStock();}
+  if(id==="solicitud") {renderRequestLines();renderRequestsTable();}
   if(id==="design") {renderTabTitleEditor();renderWidgetEditor();renderColumnWidthTargets();renderColumnWidthEditor();renderLogoEditor();renderLogos();}
 }
 
@@ -1128,6 +1159,7 @@ function applyPublicMode() {
   $("tabs").style.display="none";
   $("recordsTab").style.display="none";
   $("stockTab").style.display="none";
+  $("solicitudTab").style.display="none";
   $("designTab").style.display="none";
   $("customTab").style.display="none";
   $("globalSheetToolbar").style.display="flex";
@@ -1215,6 +1247,123 @@ function getStockRows() {
   });
   return {rows:[...map.values()].sort((a,b)=>a.product.localeCompare(b.product,"es")),error:""};
 }
+
+/* SOLICITUDES DE FABRICACIÓN / CONSIGNACIÓN / EMBARQUES */
+let requestDraftLines = [];
+let editingRequestId = null;
+let requestCatalog = [];
+const REQUEST_OPERATIONS = ["Consignación", "Fabricación", "Embarque"];
+function buildRequestCatalog() {
+  const items=[];
+  book.sheets.forEach((sh,si)=>{
+    const cols=columns(sh.rows||[]);
+    if(!cols.length) return;
+    const cfg=book.productConfig||{};
+    const nameCol=(Number(cfg.sheet)===si && cfg.name && cols.includes(cfg.name))?cfg.name:guessCol(cols,["producto","descripción","descripcion","artículo","articulo","nombre"]);
+    const codeCol=(Number(cfg.sheet)===si && cfg.code && cols.includes(cfg.code))?cfg.code:guessCol(cols,["código","codigo","sku","cod.","code"]);
+    if(!nameCol) return;
+    (sh.rows||[]).forEach((row,ri)=>{
+      const name=String(row[nameCol]??"").trim();
+      if(!name) return;
+      const code=codeCol?String(row[codeCol]??"").trim():"";
+      const key=norm(name)+"|"+norm(code);
+      if(!items.some(x=>x.key===key)) items.push({key,name,code,sheet:si,row:ri,sheetName:sh.name});
+    });
+  });
+  return items.sort((a,b)=>a.name.localeCompare(b.name,"es")||a.code.localeCompare(b.code,"es"));
+}
+function requestProductOptions(selectedKey) {
+  requestCatalog=buildRequestCatalog();
+  return '<option value="">— Elegir producto —</option>'+requestCatalog.map((p,i)=>`<option value="${i}" ${p.key===selectedKey?'selected':''}>${esc(p.name)}${p.code?' · '+esc(p.code):''}${p.sheetName?' ('+esc(p.sheetName)+')':''}</option>`).join("");
+}
+function addRequestLine(line={operation:"Fabricación",productKey:"",code:"",quantity:1}) {
+  requestDraftLines.push({...line,id:line.id||uid()});
+  renderRequestLines();
+}
+function renderRequestLines() {
+  const box=$("requestLinesEditor"); if(!box) return;
+  if(!requestDraftLines.length) requestDraftLines.push({id:uid(),operation:"Fabricación",productKey:"",code:"",quantity:1});
+  let html='<table class="request-lines"><thead><tr><th>N.º de solicitud</th><th>Fecha y hora</th><th>Operación</th><th>Producto</th><th>Código</th><th>Cantidad</th><th class="no-print">Acción</th></tr></thead><tbody>';
+  requestDraftLines.forEach((l,i)=>{
+    html+=`<tr><td>${editingRequestId?esc((book.solicitudes.find(r=>r.id===editingRequestId)||{}).number||'En edición'):'Se asigna al guardar'}</td><td>${editingRequestId?esc(formatRequestDate((book.solicitudes.find(r=>r.id===editingRequestId)||{}).savedAt)):'Al guardar'}</td><td><select data-request-operation="${i}">${REQUEST_OPERATIONS.map(op=>`<option ${l.operation===op?'selected':''}>${op}</option>`).join('')}</select></td><td><select data-request-product="${i}">${requestProductOptions(l.productKey)}</select></td><td><input data-request-code="${i}" value="${esc(l.code||'')}" readonly aria-label="Código del producto"></td><td><input data-request-quantity="${i}" type="number" min="1" step="1" value="${Math.max(1,Number(l.quantity)||1)}" aria-label="Cantidad solicitada"></td><td class="no-print"><button class="danger" data-request-remove="${i}">Quitar</button></td></tr>`;
+  });
+  box.innerHTML=html+'</tbody></table>';
+  box.querySelectorAll('[data-request-operation]').forEach(el=>el.onchange=()=>{requestDraftLines[Number(el.dataset.requestOperation)].operation=el.value;});
+  box.querySelectorAll('[data-request-product]').forEach(el=>el.onchange=()=>{
+    const i=Number(el.dataset.requestProduct),p=requestCatalog[Number(el.value)];
+    requestDraftLines[i].productKey=p?.key||"";requestDraftLines[i].code=p?.code||"";requestDraftLines[i].product=p?.name||"";
+    renderRequestLines();
+  });
+  box.querySelectorAll('[data-request-quantity]').forEach(el=>el.onchange=()=>{requestDraftLines[Number(el.dataset.requestQuantity)].quantity=Math.max(1,Math.floor(Number(el.value)||1));el.value=requestDraftLines[Number(el.dataset.requestQuantity)].quantity;});
+  box.querySelectorAll('[data-request-remove]').forEach(el=>el.onclick=()=>{requestDraftLines.splice(Number(el.dataset.requestRemove),1);renderRequestLines();});
+}
+function formatRequestDate(value) {
+  if(!value) return '—';
+  const d=new Date(value); if(Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString('es-AR',{dateStyle:'short',timeStyle:'medium'});
+}
+function resetRequestEditor() {
+  editingRequestId=null;requestDraftLines=[{id:uid(),operation:'Fabricación',productKey:'',code:'',quantity:1}];
+  $("requestNumberLabel").textContent='Nueva solicitud';
+  $("requestDateLabel").textContent='La fecha y hora se asignan al guardar';
+  $("saveRequestBtn").textContent='Guardar solicitud';
+  $("cancelEditRequestBtn").style.display='none';
+  renderRequestLines();
+}
+function renderRequestsTable() {
+  const box=$("requestsTable"); if(!box) return;
+  const q=norm($("requestSearch")?.value||"");
+  const reqs=[...(book.solicitudes||[])].sort((a,b)=>String(b.savedAt).localeCompare(String(a.savedAt)));
+  const filtered=reqs.filter(req=>norm([req.number,formatRequestDate(req.savedAt),...(req.lines||[]).flatMap(l=>[l.operation,l.product,l.code,l.quantity])].join(' ')).includes(q));
+  if(!filtered.length){box.innerHTML='<p class="muted" style="padding:12px">Todavía no hay solicitudes guardadas.</p>';return;}
+  let html='<table class="request-lines"><thead><tr><th>N.º de solicitud</th><th>Fecha y hora</th><th>Operación</th><th>Producto</th><th>Código</th><th>Cantidad</th><th class="no-print">Acciones</th></tr></thead><tbody>';
+  filtered.forEach(req=>(req.lines||[]).forEach((line,idx)=>{
+    html+=`<tr><td>${esc(req.number)}</td><td>${esc(formatRequestDate(req.savedAt))}</td><td>${esc(line.operation)}</td><td>${esc(line.product)}</td><td>${esc(line.code||'—')}</td><td>${esc(line.quantity)}</td>${idx===0?`<td class="request-actions no-print" rowspan="${Math.max(1,req.lines.length)}"><button class="secondary" data-edit-request="${esc(req.id)}">Editar solicitud</button></td>`:''}</tr>`;
+  }));
+  html+='</tbody></table>';box.innerHTML=html;
+  box.querySelectorAll('[data-edit-request]').forEach(btn=>btn.onclick=()=>loadRequestForEdit(btn.dataset.editRequest));
+}
+function loadRequestForEdit(id) {
+  const req=(book.solicitudes||[]).find(r=>r.id===id);if(!req)return;
+  editingRequestId=id;
+  requestDraftLines=(req.lines||[]).map(l=>({...l,id:uid()}));
+  if(!requestDraftLines.length) requestDraftLines=[{id:uid(),operation:'Fabricación',productKey:'',code:'',quantity:1}];
+  $("requestNumberLabel").textContent='Editando '+req.number;
+  $("requestDateLabel").textContent='Guardada: '+formatRequestDate(req.savedAt);
+  $("saveRequestBtn").textContent='Guardar cambios';
+  $("cancelEditRequestBtn").style.display='inline-flex';
+  renderRequestLines();window.scrollTo({top:0,behavior:'smooth'});
+}
+async function saveRequest() {
+  const lines=requestDraftLines.map(l=>{
+    const p=requestCatalog.find(x=>x.key===l.productKey);
+    return {operation:l.operation,product:p?.name||l.product||'',code:p?.code||l.code||'',quantity:Math.max(1,Math.floor(Number(l.quantity)||1)),productKey:p?.key||l.productKey||''};
+  }).filter(l=>l.product && REQUEST_OPERATIONS.includes(l.operation) && l.quantity>0);
+  if(!lines.length){message('requestStatus','Agregá al menos un producto válido a la solicitud.',true);return;}
+  if(lines.length!==requestDraftLines.length){message('requestStatus','Elegí un producto en cada fila antes de guardar.',true);return;}
+  const now=new Date().toISOString();
+  try {
+    $("saveRequestBtn").disabled=true;
+    if(editingRequestId){
+      const idx=book.solicitudes.findIndex(r=>r.id===editingRequestId);if(idx<0)throw new Error('No se encontró la solicitud que querés editar.');
+      book.solicitudes[idx]={...book.solicitudes[idx],lines,updatedAt:now};
+    } else {
+      book.requestCounter=Math.max(Number(book.requestCounter)||0,...(book.solicitudes||[]).map(r=>Number(String(r.number||'').replace(/\D/g,''))||0))+1;
+      const number='SOL-'+String(book.requestCounter).padStart(5,'0');
+      book.solicitudes=book.solicitudes||[];
+      book.solicitudes.push({id:uid(),number,savedAt:now,updatedAt:now,createdBy:currentUser?.email||'Usuario',lines});
+    }
+    await saveBook();
+    message('requestStatus',editingRequestId?'Solicitud actualizada correctamente.':'Solicitud guardada correctamente.');
+    resetRequestEditor();renderRequestsTable();
+  } catch(err) {message('requestStatus','No se pudo guardar la solicitud: '+err.message,true);}
+  finally {$('saveRequestBtn').disabled=false;}
+}
+$("addRequestLineBtn").onclick=()=>addRequestLine();
+$("saveRequestBtn").onclick=saveRequest;
+$("cancelEditRequestBtn").onclick=resetRequestEditor;
+$("requestSearch").oninput=renderRequestsTable;
+
 function renderStock() {
   $("printCompany").textContent=book.design.title||"FITIN CAMPO";
   $("printTitle").textContent=book.design.stockHeading||"Stock actual";
