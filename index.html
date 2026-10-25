@@ -65,6 +65,8 @@ td[contenteditable=true]:focus {outline:2px solid var(--primary)}
 .status {min-height:20px;margin:10px 0;overflow-wrap:anywhere}
 .error {color:#bd3545}.success {color:#16834b}
 .hidden {display:none!important}
+.records-only-toolbar {display:none!important}
+body.records-active .records-only-toolbar {display:flex!important}
 .widget-grid {display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:16px}
 .widget {grid-column:span 6;min-width:0}
 .widget.span12 {grid-column:span 12}
@@ -141,7 +143,7 @@ footer {text-align:center;color:var(--muted);padding:22px}
 
 <main class="container">
   <nav id="tabs" class="tabs"></nav>
-  <div class="toolbar no-print" id="globalSheetToolbar" style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:-8px">
+  <div id="globalSheetToolbar" class="toolbar records-only-toolbar no-print" style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:-8px">
     <label for="globalSheetSelect"><strong>Hoja de trabajo:</strong></label>
     <select id="globalSheetSelect" style="max-width:320px;min-width:180px"></select>
     <span id="globalSheetHint" class="muted">Elegí la hoja activa para trabajar con sus registros.</span>
@@ -189,6 +191,7 @@ footer {text-align:center;color:var(--muted);padding:22px}
       <div class="toolbar no-print" style="justify-content:flex-end"><button id="downloadInventoryPdfBtn" class="secondary">Descargar PDF de inventario general de productos</button></div>
       <div id="inventoryPrintArea">
       <h2>Inventario general de productos</h2>
+      <p class="muted availability-date" id="inventoryAvailabilityDate">Disponibilidad —</p>
       <p class="muted">Listado consolidado por producto y código.</p>
       <div class="design-grid no-print">
         <div><label>Stock Trenque Lauquen</label><select id="locTrenque"></select></div>
@@ -219,6 +222,7 @@ footer {text-align:center;color:var(--muted);padding:22px}
   <section id="recordsTab" class="hidden">
     <div class="panel">
       <h2 id="recordsHeading">Registros</h2>
+      <p class="muted availability-date" id="recordsAvailabilityDate">Disponibilidad —</p>
       <div class="toolbar">
         <label for="sheetSelect">Hoja:</label>
         <select id="sheetSelect" style="max-width:250px"></select>
@@ -626,8 +630,23 @@ async function loadBook() {
   book.active=Math.min(Math.max(0,Number(book.active)||0),book.sheets.length-1);
 }
 
+function availabilityDateLabel() {
+  const raw=book.availabilityUpdatedAt || book.updatedAt || null;
+  const d=raw?new Date(raw):new Date();
+  return 'Disponibilidad '+d.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
+}
+function stampAvailabilityUpdate() {
+  book.availabilityUpdatedAt=new Date().toISOString();
+  const label=availabilityDateLabel();
+  ['recordsAvailabilityDate','inventoryAvailabilityDate'].forEach(id=>{const el=$(id);if(el)el.textContent=label;});
+}
+function renderAvailabilityDates() {
+  const label=availabilityDateLabel();
+  ['recordsAvailabilityDate','inventoryAvailabilityDate'].forEach(id=>{const el=$(id);if(el)el.textContent=label;});
+}
+
 async function saveBook() {
-  if(!currentUser) throw new Error("Tu sesión no está activa.");
+  if(!currentUser) throw new Error(PUBLIC_MODE?"Para guardar solicitudes desde el acceso público hay que habilitar una tabla/política pública segura en Supabase; no se permite sobrescribir el libro completo sin iniciar sesión.":"Tu sesión no está activa.");
 
   const payload={
     id:1,
@@ -716,7 +735,7 @@ function allTabs() {
 }
 function renderTabs() {
   $("tabs").innerHTML="";
-  allTabs().forEach(t=>{
+  allTabs().filter(t=>!(PUBLIC_MODE && t.id==="design")).forEach(t=>{
     const b=document.createElement("button");
     b.textContent=t.label;
     b.className=t.id===activeTab?"active":"";
@@ -725,7 +744,9 @@ function renderTabs() {
   });
 }
 function showTab(id) {
+  if(PUBLIC_MODE && id==="design") return;
   activeTab=id;
+  document.body.classList.toggle("records-active",id==="records");
   ["dashboardTab","recordsTab","stockTab","solicitudTab","designTab","customTab"].forEach(x=>$(x).classList.add("hidden"));
 
   if(["dashboard","records","stock","solicitud","design"].includes(id)) {
@@ -757,6 +778,7 @@ function renderSheetSelect() {
 }
 function renderAll() {
   renderSheetSelect();
+  renderAvailabilityDates();
   renderRecords();
   setupCountControls();
   setupProductControls();
@@ -767,6 +789,8 @@ function setActiveSheet(index) {
   book.active=Math.min(Math.max(0,Number(index)||0),book.sheets.length-1);
   renderSheetSelect();
   renderRecords();
+  requestCatalog=buildRequestCatalog();
+  renderRequestLines();
   renderDashboard();
   if($("designTab")&&!$("designTab").classList.contains("hidden")){renderColumnWidthTargets();renderColumnWidthEditor();}
 }
@@ -777,6 +801,7 @@ $("globalSheetSelect").onchange=()=>{
   else if(activeTab==="stock") { setupStockControls(); renderStock(); }
 };
 function renderRecords() {
+  renderAvailabilityDates();
   const s=sheet(),cols=columns(s.rows),q=$("searchInput").value.trim().toLowerCase();
   const rows=s.rows.map((r,i)=>({r,i})).filter(x=>!q||Object.values(x.r).some(v=>String(v??"").toLowerCase().includes(q)));
 
@@ -787,15 +812,15 @@ function renderRecords() {
 
   let html=`<table data-width-key="records:${book.active}"><thead><tr>`+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"<th>Acciones</th></tr></thead><tbody>";
   rows.forEach(x=>{
-    html+="<tr>"+cols.map(c=>`<td contenteditable="true" data-row="${x.i}" data-col="${esc(c)}">${esc(x.r[c]??"")}</td>`).join("")+
-      `<td><button class="danger" data-del="${x.i}">Eliminar</button></td></tr>`;
+    html+="<tr>"+cols.map(c=>`<td ${PUBLIC_MODE?"":"contenteditable=\"true\" data-row=\""+x.i+"\" data-col=\""+esc(c)+"\""}>${esc(x.r[c]??"")}</td>`).join("")+
+      `${PUBLIC_MODE?"":"<td><button class=\"danger\" data-del=\""+x.i+"\">Eliminar</button></td>"}</tr>`;
   });
   $("recordsTable").innerHTML=html+"</tbody></table>";
   applyColumnWidths($("recordsTable").querySelector("table"),`records:${book.active}`,cols.concat(["Acciones"]));
 
   $("recordsTable").querySelectorAll("[contenteditable]").forEach(td=>{
     td.onblur=()=>{
-      s.rows[Number(td.dataset.row)][td.dataset.col]=td.textContent.trim();
+      s.rows[Number(td.dataset.row)][td.dataset.col]=td.textContent.trim();stampAvailabilityUpdate();
     };
     td.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();td.blur();}};
   });
@@ -843,7 +868,7 @@ $("deleteSheetBtn").onclick=()=>{
   }
 };
 $("saveRecordsBtn").onclick=async()=>{
-  try {message("recordsStatus","Guardando...");await saveBook();message("recordsStatus","Registros guardados correctamente.");}
+  try {stampAvailabilityUpdate();message("recordsStatus","Guardando...");await saveBook();renderAvailabilityDates();message("recordsStatus","Registros guardados correctamente.");}
   catch(e){message("recordsStatus",e.message,true);}
 };
 $("importBtn").onclick=()=>$("excelFile").click();
@@ -903,6 +928,7 @@ ${collisions.map(x=>x.name).join("\n")}
       if(firstImportedIndex<0) firstImportedIndex=i;
     }
     book.active=firstImportedIndex>=0?firstImportedIndex:0;
+    stampAvailabilityUpdate();
     renderAll();
     renderSheetSelect();
     message("recordsStatus",`Se leyeron ${worksheetNames.length} hoja(s) del Excel y se importaron ${imported.length}: ${imported.map(x=>x.name).join(" · ")}. Guardando en Supabase...`);
@@ -921,10 +947,15 @@ ${collisions.map(x=>x.name).join("\n")}
   }
 };
 $("exportBtn").onclick=()=>{
-  const ws=XLSX.utils.json_to_sheet(sheet().rows);
   const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws,(sheet().name||"Registros").slice(0,31));
-  XLSX.writeFile(wb,(sheet().name||"registros")+".xlsx");
+  const sheetsToExport=PUBLIC_MODE?book.sheets:[sheet()];
+  sheetsToExport.forEach((sh,i)=>{
+    const ws=XLSX.utils.json_to_sheet(sh.rows||[]);
+    let name=(sh.name||`Hoja${i+1}`).slice(0,31),base=name,n=2;
+    while(wb.SheetNames.includes(name)) name=(base.slice(0,27)+` (${n++})`).slice(0,31);
+    XLSX.utils.book_append_sheet(wb,ws,name);
+  });
+  XLSX.writeFile(wb,PUBLIC_MODE?"FITIN_CAMPO_inventario.xlsx":((sheet().name||"registros")+".xlsx"));
 };
 
 /* SELECTORES */
@@ -1141,7 +1172,7 @@ function renderAvailabilityChart() {
 }
 $("addAvailabilityBtn").onclick=()=>{const p=$("availabilityProduct").value;if(!p){$("availabilityStatus").textContent="Primero elegí un producto.";return;}if(!comparedProducts.includes(p)) comparedProducts.push(p);renderAvailabilityChart();};
 $("clearAvailabilityBtn").onclick=()=>{comparedProducts=[];renderAvailabilityChart();};
-$("saveLocationsBtn").onclick=async()=>{book.locationConfig=selectedLocationConfig();try{await saveBook();renderInventory();$("productStatus").textContent="Columnas de stock guardadas.";}catch(e){$("productStatus").textContent="No se pudo guardar la configuración: "+e.message;}};
+$("saveLocationsBtn").onclick=async()=>{book.locationConfig=selectedLocationConfig();stampAvailabilityUpdate();try{await saveBook();renderAvailabilityDates();renderInventory();$("productStatus").textContent="Columnas de stock guardadas.";}catch(e){$("productStatus").textContent="No se pudo guardar la configuración: "+e.message;}};
 $("refreshInventoryBtn").onclick=async()=>{
   const btn=$("refreshInventoryBtn");
   try {
@@ -1155,14 +1186,19 @@ $("refreshInventoryBtn").onclick=async()=>{
 
 function applyPublicMode() {
   document.body.classList.add("public-mode");
-  // La vista compartida solo muestra Inicio; los usuarios pueden filtrar y comparar, no editar.
-  $("tabs").style.display="none";
-  $("recordsTab").style.display="none";
-  $("stockTab").style.display="none";
-  $("solicitudTab").style.display="none";
+  // Vista pública: todas las páginas salvo Diseño; Registros es de solo lectura.
+  $("tabs").style.display="flex";
+  const designTabButton=[...$("tabs").querySelectorAll('button')].find(b=>b.textContent===(book.tabLabels.design||'Diseño de página'));
+  if(designTabButton) designTabButton.style.display='none';
   $("designTab").style.display="none";
-  $("customTab").style.display="none";
-  $("globalSheetToolbar").style.display="flex";
+  $("globalSheetToolbar").style.display="";
+  document.body.classList.toggle('records-active',activeTab==='records');
+  // Ocultar edición de hojas y dejar la exportación disponible.
+  ["newSheetBtn","renameSheetBtn","deleteSheetBtn","addRowBtn","addColumnBtn","importBtn","saveRecordsBtn"].forEach(id=>{const el=$(id);if(el)el.style.display='none';});
+  const excelFile=$("excelFile"); if(excelFile) excelFile.disabled=true;
+  $("exportBtn").disabled=false; $("exportBtn").style.display='';
+  $("searchInput").disabled=false;
+  $("sheetSelect").disabled=false;
   $("logoutBtn").style.display="none";
   // Ocultar configuraciones de columnas y guardado, sin bloquear filtros ni comparaciones.
   ["countSheet","countColumn","countType","countSumColumn","saveCountConfig",
@@ -1177,7 +1213,7 @@ function applyPublicMode() {
   const saveProductConfig=$("saveProductConfig"); if(saveProductConfig) saveProductConfig.style.display="none";
   // Bloquea edición de celdas y cualquier botón de escritura si quedara visible por cambios futuros.
   document.querySelectorAll("[contenteditable], input[type=file]").forEach(el=>{el.removeAttribute("contenteditable");el.disabled=true;});
-  ["newSheetBtn","renameSheetBtn","deleteSheetBtn","addRowBtn","addColumnBtn","importBtn","exportBtn","saveRecordsBtn",
+  ["newSheetBtn","renameSheetBtn","deleteSheetBtn","addRowBtn","addColumnBtn","importBtn","saveRecordsBtn",
    "saveStockConfigBtn","refreshStockBtn","printStockBtn","saveTabTitlesBtn","addTabBtn","addWidgetBtn","saveColumnWidthsBtn",
    "resetColumnWidthsBtn","addLogoBtn","showLogosBtn","hideLogosBtn","saveLogosBtn","previewDesignBtn","saveDesignBtn","resetDesignBtn"].forEach(id=>{const el=$(id);if(el)el.disabled=true;});
   // Los selectores de producto/hoja y el gráfico de disponibilidad siguen operativos.
@@ -1254,23 +1290,21 @@ let editingRequestId = null;
 let requestCatalog = [];
 const REQUEST_OPERATIONS = ["Consignación", "Fabricación", "Embarque"];
 function buildRequestCatalog() {
+  const sh=sheet();
+  const cols=columns(sh?.rows||[]);
+  const findExact=(names)=>cols.find(c=>names.includes(String(c).trim().toLocaleLowerCase('es')))||null;
+  const nameCol=findExact(['descripción','descripcion']);
+  const codeCol=findExact(['código','codigo']);
+  if(!nameCol) return [];
   const items=[];
-  book.sheets.forEach((sh,si)=>{
-    const cols=columns(sh.rows||[]);
-    if(!cols.length) return;
-    const cfg=book.productConfig||{};
-    const nameCol=(Number(cfg.sheet)===si && cfg.name && cols.includes(cfg.name))?cfg.name:guessCol(cols,["producto","descripción","descripcion","artículo","articulo","nombre"]);
-    const codeCol=(Number(cfg.sheet)===si && cfg.code && cols.includes(cfg.code))?cfg.code:guessCol(cols,["código","codigo","sku","cod.","code"]);
-    if(!nameCol) return;
-    (sh.rows||[]).forEach((row,ri)=>{
-      const name=String(row[nameCol]??"").trim();
-      if(!name) return;
-      const code=codeCol?String(row[codeCol]??"").trim():"";
-      const key=norm(name)+"|"+norm(code);
-      if(!items.some(x=>x.key===key)) items.push({key,name,code,sheet:si,row:ri,sheetName:sh.name});
-    });
+  (sh.rows||[]).forEach((row,ri)=>{
+    const name=String(row[nameCol]??'').trim();
+    if(!name) return;
+    const code=codeCol?String(row[codeCol]??'').trim():'';
+    const key=norm(name)+'|'+norm(code);
+    if(!items.some(x=>x.key===key)) items.push({key,name,code,sheet:book.active,row:ri,sheetName:sh.name});
   });
-  return items.sort((a,b)=>a.name.localeCompare(b.name,"es")||a.code.localeCompare(b.code,"es"));
+  return items.sort((a,b)=>a.name.localeCompare(b.name,'es')||a.code.localeCompare(b.code,'es'));
 }
 function requestProductOptions(selectedKey) {
   requestCatalog=buildRequestCatalog();
