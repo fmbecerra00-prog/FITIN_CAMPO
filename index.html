@@ -242,6 +242,7 @@ footer {text-align:center;color:var(--muted);padding:22px}
         <input id="searchInput" placeholder="Buscar registros...">
         <button id="addRowBtn">Agregar fila</button>
         <button id="addColumnBtn" class="secondary">Agregar columna</button>
+        <button id="deleteColumnBtn" class="danger">Eliminar columna</button>
       </div>
       <div class="toolbar">
         <button id="importBtn">Importar Excel</button>
@@ -874,6 +875,18 @@ $("addColumnBtn").onclick=()=>{
   else sheet().rows.forEach(r=>r[name.trim()]="");
   renderRecords();
 };
+$("deleteColumnBtn").onclick=()=>{
+  const cols=columns(sheet().rows);
+  if(!cols.length){alert("Esta hoja no tiene columnas para eliminar.");return;}
+  const chosen=prompt("Escribí exactamente el nombre de la columna que querés eliminar:\n\n"+cols.join("\n"),cols[0]);
+  if(chosen===null) return;
+  const name=chosen.trim();
+  if(!cols.includes(name)){alert("No existe una columna con ese nombre. Copiá el nombre tal como aparece en la tabla.");return;}
+  if(!confirm(`¿Eliminar la columna «${name}» y todos sus datos de esta hoja? Esta acción no se puede deshacer después de guardar.`)) return;
+  sheet().rows.forEach(r=>delete r[name]);
+  renderRecords();renderDashboard();
+  message("recordsStatus",`Columna «${name}» eliminada. Presioná “Guardar registros” para guardar el cambio.`);
+};
 $("newSheetBtn").onclick=()=>{
   const n=prompt("Nombre de la nueva hoja:");
   if(!n?.trim()) return;
@@ -924,15 +937,24 @@ $("excelFile").onchange=async e=>{
         imported.push({name:displayName,rows:[]});
         continue;
       }
+      // Excel puede declarar columnas vacías por formato aplicado a celdas lejanas.
+      // Solo importamos columnas que tengan encabezado o algún dato real debajo.
       const rawHeaders=(matrix[0]||[]).map(v=>String(v??"").trim());
+      const maxCols=Math.max(rawHeaders.length,...matrix.map(r=>Array.isArray(r)?r.length:0));
+      const keepIndexes=[];
+      for(let i=0;i<maxCols;i++) {
+        const header=String(rawHeaders[i]??"").trim();
+        const hasData=matrix.slice(1).some(row=>String((row||[])[i]??"").trim()!=="");
+        if(header!=="" || hasData) keepIndexes.push(i);
+      }
       const usedHeaders=new Set();
-      const headers=rawHeaders.map((h,i)=>{
-        let name=h||`Columna ${i+1}`,base=name,suffix=2;
+      const headers=keepIndexes.map(i=>{
+        let name=String(rawHeaders[i]??"").trim()||`Columna ${i+1}`,base=name,suffix=2;
         while(usedHeaders.has(name)) name=`${base} (${suffix++})`;
         usedHeaders.add(name);return name;
       });
-      const rows=matrix.slice(1).filter(row=>Array.isArray(row)&&row.some(v=>String(v??"").trim()!=="")).map(row=>{
-        const obj={};headers.forEach((h,i)=>obj[h]=row[i]??"");return obj;
+      const rows=matrix.slice(1).filter(row=>Array.isArray(row)&&keepIndexes.some(i=>String(row[i]??"").trim()!=="")).map(row=>{
+        const obj={};headers.forEach((h,j)=>obj[h]=row[keepIndexes[j]]??"");return obj;
       });
       imported.push({name:displayName,rows});
     }
