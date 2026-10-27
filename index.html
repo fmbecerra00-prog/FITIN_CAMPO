@@ -80,6 +80,12 @@ body.records-active .records-only-toolbar {display:flex!important}
 #availabilityChart {width:100%;max-height:420px}
 #dashboardStockChart {width:100%!important;height:100%!important}
 .request-lines td,.request-lines th{vertical-align:top}.request-lines input,.request-lines select{min-width:110px}.request-lines td:nth-child(4){min-width:300px;width:34%}.request-product-picker{min-width:260px;max-width:520px}.request-product-picker input{width:100%;min-width:240px}.request-product-options{display:none;position:relative;max-height:220px;overflow:auto;background:#fff;border:1px solid var(--border);border-radius:8px;margin-top:5px;box-shadow:0 5px 14px #17233a18;z-index:20}.request-product-picker.open .request-product-options{display:block}.request-product-option{display:block;width:100%;text-align:left;white-space:normal;overflow-wrap:anywhere;background:#fff;color:var(--text);border:0;border-bottom:1px solid var(--border);border-radius:0;padding:9px 10px}.request-product-option:hover,.request-product-option:focus{background:#eef2e6}.request-product-empty{padding:10px;color:var(--muted)}.request-meta{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.request-actions{white-space:nowrap}
+.request-cancelled td { text-decoration:line-through; color:#7b8494; background:#f0f2f6!important; }
+.request-cancelled td.request-actions, .request-cancelled td.request-actions * { text-decoration:none; }
+.request-cancelled-badge { display:inline-block; margin-left:6px; padding:3px 7px; border-radius:6px; background:#e3e6ec; color:#586174; font-size:12px; font-weight:700; text-decoration:none; }
+.request-actions { min-width:210px; white-space:normal; }
+.request-actions button { margin:3px 2px; }
+
 #inventoryTable td {white-space:nowrap}
 #availabilityChosen button {margin:3px}
 .editor-row {display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:10px;border:1px solid var(--border);border-radius:10px;padding:12px;margin:10px 0}
@@ -1376,18 +1382,72 @@ function resetRequestEditor() {
 function renderRequestsTable() {
   const box=$("requestsTable"); if(!box) return;
   const q=norm($("requestSearch")?.value||"");
+  const admin=isAdminUser();
   const reqs=[...(book.solicitudes||[])].sort((a,b)=>String(b.savedAt).localeCompare(String(a.savedAt)));
-  const filtered=reqs.filter(req=>norm([req.number,formatRequestDate(req.savedAt),...(req.lines||[]).flatMap(l=>[l.operation,l.product,l.code,l.quantity])].join(' ')).includes(q));
+  const filtered=reqs.filter(req=>norm([req.number,formatRequestDate(req.savedAt),req.createdBy,req.cancelledAt?'cancelada':'activa',...(req.lines||[]).flatMap(l=>[l.operation,l.product,l.code,l.quantity])].join(' ')).includes(q));
   if(!filtered.length){box.innerHTML='<p class="muted" style="padding:12px">Todavía no hay solicitudes guardadas.</p>';return;}
   let html='<table class="request-lines"><thead><tr><th>N.º de solicitud</th><th>Fecha y hora</th><th>Operación</th><th>Producto</th><th>Código</th><th>Cantidad</th><th class="no-print">Acciones</th></tr></thead><tbody>';
-  filtered.forEach(req=>(req.lines||[]).forEach((line,idx)=>{
-    html+=`<tr><td>${esc(req.number)}</td><td>${esc(formatRequestDate(req.savedAt))}</td><td>${esc(line.operation)}</td><td>${esc(line.product)}</td><td>${esc(line.code||'—')}</td><td>${esc(line.quantity)}</td>${idx===0?`<td class="request-actions no-print" rowspan="${Math.max(1,req.lines.length)}"><button class="secondary" data-edit-request="${esc(req.id)}">Editar solicitud</button></td>`:''}</tr>`;
-  }));
+  filtered.forEach(req=>{
+    const lines=Array.isArray(req.lines)&&req.lines.length?req.lines:[{operation:'—',product:'Solicitud sin detalle',code:'',quantity:'—'}];
+    const cancelled=!!req.cancelledAt;
+    lines.forEach((line,idx)=>{
+      const rowClass=cancelled?' class="request-cancelled"':'';
+      html+=`<tr${rowClass}><td>${esc(req.number)}${idx===0&&cancelled?' <span class="request-cancelled-badge">CANCELADA</span>':''}</td><td>${esc(formatRequestDate(req.savedAt))}</td><td>${esc(line.operation)}</td><td>${esc(line.product)}</td><td>${esc(line.code||'—')}</td><td>${esc(line.quantity)}</td>`;
+      if(idx===0){
+        html+=`<td class="request-actions no-print" rowspan="${lines.length}">`;
+        if(!cancelled) html+=`<button class="secondary" data-edit-request="${esc(req.id)}" ${cancelled?'disabled':''}>Editar solicitud</button>`;
+        if(cancelled) {
+          html+=`<button class="secondary" data-cancel-request="${esc(req.id)}" data-cancel-action="restore">Reactivar solicitud</button>`;
+        } else {
+          html+=`<button class="secondary" data-cancel-request="${esc(req.id)}" data-cancel-action="cancel">Cancelar solicitud</button>`;
+        }
+        if(admin) html+=`<button class="danger" data-delete-request="${esc(req.id)}">Eliminar definitivamente</button>`;
+        if(cancelled) html+=`<div class="muted" style="font-size:12px;margin:4px">Cancelada: ${esc(formatRequestDate(req.cancelledAt))}${req.cancelledBy?' · '+esc(req.cancelledBy):''}</div>`;
+        html+='</td>';
+      }
+      html+='</tr>';
+    });
+  });
   html+='</tbody></table>';box.innerHTML=html;
   box.querySelectorAll('[data-edit-request]').forEach(btn=>btn.onclick=()=>loadRequestForEdit(btn.dataset.editRequest));
+  box.querySelectorAll('[data-cancel-request]').forEach(btn=>btn.onclick=async()=>{
+    const req=(book.solicitudes||[]).find(r=>r.id===btn.dataset.cancelRequest); if(!req) return;
+    const restoring=btn.dataset.cancelAction==='restore';
+    const promptText=restoring?'¿Reactivar esta solicitud?':'¿Cancelar esta solicitud? Se conservará guardada y aparecerá tachada para todos los usuarios.';
+    if(!confirm(promptText)) return;
+    btn.disabled=true;
+    try {
+      if(restoring){delete req.cancelledAt;delete req.cancelledBy;}
+      else {req.cancelledAt=new Date().toISOString();req.cancelledBy=currentUser?.email||'Usuario';}
+      req.updatedAt=new Date().toISOString();
+      await saveBook();
+      renderRequestsTable();
+      message('requestStatus',restoring?'Solicitud reactivada correctamente.':'Solicitud cancelada. Se conserva en el registro.',false);
+    } catch(err) {
+      message('requestStatus','No se pudo actualizar la solicitud: '+(err?.message||err),true);
+      renderRequestsTable();
+    }
+  });
+  box.querySelectorAll('[data-delete-request]').forEach(btn=>btn.onclick=async()=>{
+    if(!isAdminUser()) {alert('Solo la administradora puede eliminar solicitudes guardadas.');return;}
+    const req=(book.solicitudes||[]).find(r=>r.id===btn.dataset.deleteRequest); if(!req)return;
+    if(!confirm(`¿Eliminar definitivamente la solicitud ${req.number}? Esta acción no se puede deshacer.`))return;
+    btn.disabled=true;
+    try {
+      book.solicitudes=book.solicitudes.filter(r=>r.id!==req.id);
+      await saveBook();
+      if(editingRequestId===req.id) resetRequestEditor();
+      renderRequestsTable();
+      message('requestStatus',`La solicitud ${req.number} fue eliminada definitivamente.`,false);
+    } catch(err) {
+      message('requestStatus','No se pudo eliminar la solicitud: '+(err?.message||err),true);
+      try { await loadBook(); renderRequestsTable(); } catch(_) {}
+    }
+  });
 }
 function loadRequestForEdit(id) {
   const req=(book.solicitudes||[]).find(r=>r.id===id);if(!req)return;
+  if(req.cancelledAt){message("requestStatus","Esta solicitud está cancelada. Reactivala antes de editarla.",true);return;}
   editingRequestId=id;
   requestDraftLines=(req.lines||[]).map(l=>({...l,id:uid()}));
   if(!requestDraftLines.length) requestDraftLines=[{id:uid(),operation:'Fabricación',productKey:'',code:'',quantity:1}];
