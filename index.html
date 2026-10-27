@@ -431,6 +431,9 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
 const $ = id => document.getElementById(id);
 // Modo público de solo lectura: abrir con ?public=1 en el enlace publicado.
 const PUBLIC_MODE = new URLSearchParams(window.location.search).get("public") === "1";
+// La interfaz de diseño queda reservada a la cuenta administradora. La seguridad real también se aplica con RLS en Supabase.
+const ADMIN_EMAIL = "fmbecerra00@gmail.com";
+function isAdminUser() { return !!currentUser && String(currentUser.email || "").toLowerCase() === ADMIN_EMAIL; }
 
 const DEFAULT_DESIGN = {
   title:"FITIN CAMPO",subtitle:"Gestión de productos y stock",
@@ -617,7 +620,7 @@ async function loadBook() {
     ...defaults,
     ...saved,
     sheets:loadedSheets,
-    design:{...DEFAULT_DESIGN,...(saved.design||{}),logos:Array.isArray(saved.design?.logos)?saved.design.logos:[],columnWidths:{...(saved.design?.columnWidths||{})}},
+    design:{...DEFAULT_DESIGN,logos:[],columnWidths:{}},
     tabLabels:{...DEFAULT_LABELS,...(saved.tabLabels||{})},
     customTabs:Array.isArray(saved.customTabs)?saved.customTabs:[],
     widgets:Array.isArray(saved.widgets)?saved.widgets:[],
@@ -629,6 +632,11 @@ async function loadBook() {
     stockConfig:saved.stockConfig||defaults.stockConfig
   };
 
+  // El diseño vive en una tabla separada para que app_state no exponga el editor ni sus ajustes.
+  const {data:designRow,error:designError}=await sb.from("design_config").select("data").eq("id",1).maybeSingle();
+  if(designError) throw new Error("No se pudo cargar el tema visual (revisá la tabla design_config): "+designError.message);
+  const savedDesign=designRow?.data || {};
+  book.design={...DEFAULT_DESIGN,...savedDesign,logos:Array.isArray(savedDesign.logos)?savedDesign.logos:[],columnWidths:{...(savedDesign.columnWidths||{})}};
   book.active=Math.min(Math.max(0,Number(book.active)||0),book.sheets.length-1);
 }
 
@@ -650,15 +658,22 @@ function renderAvailabilityDates() {
 async function saveBook() {
   if(!currentUser) throw new Error(PUBLIC_MODE?"Para guardar solicitudes desde el acceso público hay que habilitar una tabla/política pública segura en Supabase; no se permite sobrescribir el libro completo sin iniciar sesión.":"Tu sesión no está activa.");
 
+  // Nunca guardar el diseño dentro de app_state: así los usuarios operativos no pueden modificarlo.
+  const {design:ignoredDesign,...operationalBook}=book;
   const payload={
     id:1,
-    data:book,
+    data:operationalBook,
     updated_by:currentUser.id,
     updated_at:new Date().toISOString()
   };
 
   const {error}=await sb.from("app_state").upsert(payload,{onConflict:"id"});
   if(error) throw new Error("Error al guardar datos: "+error.message);
+  // Solo la cuenta administradora puede escribir en design_config; RLS lo verifica en el servidor.
+  if(isAdminUser()) {
+    const {error:designSaveError}=await sb.from("design_config").upsert({id:1,data:book.design||{},updated_by:currentUser.id,updated_at:new Date().toISOString()},{onConflict:"id"});
+    if(designSaveError) throw new Error("Los datos operativos se guardaron, pero no se pudo guardar el diseño: "+designSaveError.message);
+  }
 }
 
 async function startApp() {
@@ -669,7 +684,7 @@ async function startApp() {
     message("loginStatus","Cargando tus registros...");
     await loadBook();
 
-    $("userEmail").textContent=PUBLIC_MODE?"Vista pública · solo lectura":(currentUser?.email||"");
+    $("userEmail").textContent=PUBLIC_MODE?"Vista pública · solo lectura":((currentUser?.email||"")+(isAdminUser()?" · Administradora":" · Usuario"));
     $("login").style.display="none";
     $("app").style.display="block";
 
@@ -680,6 +695,7 @@ async function startApp() {
     renderWidgetEditor();
     renderColumnWidthTargets();renderColumnWidthEditor();
     showTab("dashboard");
+    if(!isAdminUser()) { const designPanel=$("designTab"); if(designPanel) designPanel.style.display="none"; }
     if(PUBLIC_MODE) { if(activeTab==="stock") activeTab="dashboard"; applyPublicMode(); }
     $("loginStatus").textContent="";
   } catch(err) {
@@ -732,7 +748,7 @@ function allTabs() {
     {id:"stock",label:book.tabLabels.stock||"Stock actual"},
     {id:"solicitud",label:"Solicitud"},
     ...book.customTabs,
-    {id:"design",label:book.tabLabels.design||"Diseño de página"}
+    ...(isAdminUser() ? [{id:"design",label:book.tabLabels.design||"Diseño de página"}] : [])
   ];
 }
 function renderTabs() {
@@ -746,7 +762,7 @@ function renderTabs() {
   });
 }
 function showTab(id) {
-  if(PUBLIC_MODE && (id==="design" || id==="stock")) return;
+  if((PUBLIC_MODE && (id==="design" || id==="stock")) || (id==="design" && !isAdminUser())) return;
   activeTab=id;
   document.body.classList.toggle("records-active",id==="records");
   ["dashboardTab","recordsTab","stockTab","solicitudTab","designTab","customTab"].forEach(x=>$(x).classList.add("hidden"));
