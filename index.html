@@ -79,7 +79,7 @@ body.records-active .records-only-toolbar {display:flex!important}
 .widget canvas {max-height:340px}
 #availabilityChart {width:100%;max-height:420px}
 #dashboardStockChart {width:100%!important;height:100%!important}
-.request-lines td,.request-lines th{vertical-align:top}.request-lines input,.request-lines select{min-width:110px}.request-lines td:nth-child(4){min-width:300px;width:34%}.request-product-picker{min-width:260px;max-width:520px}.request-product-picker input{width:100%;min-width:240px}.request-product-options{display:none;position:relative;max-height:220px;overflow:auto;background:#fff;border:1px solid var(--border);border-radius:8px;margin-top:5px;box-shadow:0 5px 14px #17233a18;z-index:20}.request-product-picker.open .request-product-options{display:block}.request-product-option{display:block;width:100%;text-align:left;white-space:normal;overflow-wrap:anywhere;background:#fff;color:var(--text);border:0;border-bottom:1px solid var(--border);border-radius:0;padding:9px 10px}.request-product-option:hover,.request-product-option:focus{background:#eef2e6}.request-product-empty{padding:10px;color:var(--muted)}.request-meta{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.request-actions{white-space:nowrap}
+.request-lines td,.request-lines th{vertical-align:top}.request-lines input,.request-lines select{min-width:110px}.request-lines td:nth-child(4){min-width:300px;width:34%}.request-product-picker{min-width:260px;max-width:520px}.request-product-picker input{width:100%;min-width:240px}.request-product-options{display:none;position:relative;max-height:220px;overflow:auto;background:#fff;border:1px solid var(--border);border-radius:8px;margin-top:5px;box-shadow:0 5px 14px #17233a18;z-index:20}.request-product-picker.open .request-product-options{display:block}.request-product-option{display:block;width:100%;text-align:left;white-space:normal;overflow-wrap:anywhere;background:#fff;color:var(--text);border:0;border-bottom:1px solid var(--border);border-radius:0;padding:9px 10px}.request-product-option:hover,.request-product-option:focus{background:#eef2e6}.request-product-empty{padding:10px;color:var(--muted)}.request-meta{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.shipment-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}.shipment-card{border:1px solid var(--border);border-radius:12px;padding:16px;background:var(--card);box-shadow:0 3px 10px #17233a0b}.shipment-card h3{margin:0 0 8px}.shipment-days{font-size:20px;font-weight:700;color:var(--primary);margin:8px 0}.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.form-grid>div{min-width:0}.form-grid input,.form-grid select{width:100%}.product-entry{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.product-entry select{min-width:230px;flex:1}.request-actions{white-space:nowrap}
 .request-cancelled td { text-decoration:line-through; color:#7b8494; background:#f0f2f6!important; }
 .request-cancelled td.request-actions, .request-cancelled td.request-actions * { text-decoration:none; }
 .request-cancelled-badge { display:inline-block; margin-left:6px; padding:3px 7px; border-radius:6px; background:#e3e6ec; color:#586174; font-size:12px; font-weight:700; text-decoration:none; }
@@ -279,6 +279,32 @@ footer {text-align:center;color:var(--muted);padding:22px}
     </div>
   </section>
 
+  <section id="consignacionTab" class="hidden">
+    <div class="panel">
+      <h2>Productos en Consignación</h2>
+      <p class="muted">Cargá los productos, el cliente y la fecha prevista de entrega. La operación queda identificada automáticamente como “Productos en consignación”.</p>
+      <div class="form-grid"><div><label for="consClient">Cliente</label><input id="consClient" placeholder="Nombre del cliente"></div><div><label for="consDate">Fecha de entrega</label><input id="consDate" type="date"></div></div>
+      <div class="toolbar"><button id="consAddLine">Agregar producto</button><button class="secondary" id="consNewProduct">Crear producto y código</button><button id="consSave">Registrar consignación</button></div>
+      <div id="consLines" class="table-wrap"></div><p id="consStatus" class="status"></p>
+    </div><div class="panel"><h2>Consignaciones registradas</h2><div id="consTable" class="table-wrap"></div></div>
+  </section>
+  <section id="pedidosTab" class="hidden">
+    <div class="panel">
+      <h2>Pedidos de fabricación</h2><p class="muted">Elegí productos del desplegable o creá un producto nuevo con su código. La operación se registra como “Pedido de fabricación”.</p>
+      <div class="form-grid"><div><label for="pedidoClient">Cliente</label><input id="pedidoClient" placeholder="Nombre del cliente"></div><div><label for="pedidoDate">Fecha del pedido</label><input id="pedidoDate" type="date"></div></div>
+      <div class="toolbar"><button id="pedidoAddLine">Agregar producto</button><button class="secondary" id="pedidoNewProduct">Crear producto y código</button><button id="pedidoSave">Registrar pedido</button></div>
+      <div id="pedidoLines" class="table-wrap"></div><p id="pedidoStatus" class="status"></p>
+    </div><div class="panel"><h2>Pedidos registrados</h2><div id="pedidoTable" class="table-wrap"></div></div>
+  </section>
+  <section id="embarquesTab" class="hidden">
+    <div class="panel"><h2>Próximos embarques</h2><p class="muted">Avisos calculados automáticamente a partir de la fecha estimada de ingreso.</p><div id="shipmentCards" class="shipment-cards"></div></div>
+    <div class="panel"><h2>Registrar embarque</h2><p class="muted">La fecha y hora de registro se asignan automáticamente al guardar.</p>
+      <div class="form-grid"><div><label for="shipmentDate">Fecha estimada de ingreso</label><input id="shipmentDate" type="date"></div><div><label for="shipmentLabel">Identificación / referencia (opcional)</label><input id="shipmentLabel" placeholder="Ej. Embarque octubre 01"></div></div>
+      <div class="toolbar"><button id="shipmentAddLine">Agregar producto</button><button class="secondary" id="shipmentNewProduct">Crear producto y código</button><button id="shipmentSave">Registrar embarque</button></div>
+      <div id="shipmentLines" class="table-wrap"></div><p id="shipmentStatus" class="status"></p>
+    </div><div class="panel"><h2>Embarques registrados</h2><div id="shipmentTable" class="table-wrap"></div></div>
+  </section>
+
   <section id="stockTab" class="hidden">
     <div id="stockPrintArea">
       <div id="stockPrintHeader">
@@ -471,6 +497,13 @@ function makeDefaultBook() {
     customTabs:[],
     widgets:[],
     solicitudes:[],
+    consignaciones:[],
+    pedidosFabricacion:[],
+    embarques:[],
+    productosManuales:[],
+    consignacionCounter:0,
+    pedidoCounter:0,
+    embarqueCounter:0,
     requestCounter:0,
     stockConfig:{sheet:0,product:"",code:"",qty:""},
     productConfig:{sheet:0,name:"",code:"",stock:"",stockAlt:"",consign:""},
@@ -632,6 +665,11 @@ async function loadBook() {
     customTabs:Array.isArray(saved.customTabs)?saved.customTabs:[],
     widgets:Array.isArray(saved.widgets)?saved.widgets:[],
     solicitudes:Array.isArray(saved.solicitudes)?saved.solicitudes:[],
+    consignaciones:Array.isArray(saved.consignaciones)?saved.consignaciones:[],
+    pedidosFabricacion:Array.isArray(saved.pedidosFabricacion)?saved.pedidosFabricacion:[],
+    embarques:Array.isArray(saved.embarques)?saved.embarques:[],
+    productosManuales:Array.isArray(saved.productosManuales)?saved.productosManuales:[],
+    consignacionCounter:Number(saved.consignacionCounter)||0, pedidoCounter:Number(saved.pedidoCounter)||0, embarqueCounter:Number(saved.embarqueCounter)||0,
     requestCounter:Number(saved.requestCounter)||0,
     countConfig:saved.countConfig||defaults.countConfig,
     productConfig:saved.productConfig||defaults.productConfig,
@@ -754,6 +792,9 @@ function allTabs() {
     {id:"records",label:book.tabLabels.records||"Registros"},
     {id:"stock",label:book.tabLabels.stock||"Stock actual"},
     {id:"solicitud",label:"Solicitud"},
+    {id:"consignacion",label:"Productos en Consignación"},
+    {id:"pedidos",label:"Pedidos de fabricación"},
+    {id:"embarques",label:"Embarques"},
     ...book.customTabs,
     ...(isAdminUser() ? [{id:"design",label:book.tabLabels.design||"Diseño de página"}] : [])
   ];
@@ -772,9 +813,9 @@ function showTab(id) {
   if((PUBLIC_MODE && (id==="design" || id==="stock")) || (id==="design" && !isAdminUser())) return;
   activeTab=id;
   document.body.classList.toggle("records-active",id==="records");
-  ["dashboardTab","recordsTab","stockTab","solicitudTab","designTab","customTab"].forEach(x=>$(x).classList.add("hidden"));
+  ["dashboardTab","recordsTab","stockTab","solicitudTab","consignacionTab","pedidosTab","embarquesTab","designTab","customTab"].forEach(x=>$(x).classList.add("hidden"));
 
-  if(["dashboard","records","stock","solicitud","design"].includes(id)) {
+  if(["dashboard","records","stock","solicitud","consignacion","pedidos","embarques","design"].includes(id)) {
     $(id+"Tab").classList.remove("hidden");
   } else {
     $("customTab").classList.remove("hidden");
@@ -790,6 +831,9 @@ function showTab(id) {
   }
   if(id==="stock") {setupStockControls();renderStock();}
   if(id==="solicitud") {renderRequestLines();renderRequestsTable();}
+  if(id==="consignacion") {renderEntryLines("cons");renderEntryTable("cons");}
+  if(id==="pedidos") {renderEntryLines("pedido");renderEntryTable("pedido");}
+  if(id==="embarques") {renderEntryLines("shipment");renderEntryTable("shipment");renderShipmentCards();}
   if(id==="design") {renderTabTitleEditor();renderWidgetEditor();renderColumnWidthTargets();renderColumnWidthEditor();renderLogoEditor();renderLogos();}
 }
 
@@ -1335,15 +1379,15 @@ function buildRequestCatalog() {
   const findExact = names => cols.find(c => names.includes(String(c).trim().toLocaleLowerCase('es'))) || null;
   const nameCol = findExact(['descripción','descripcion']);
   const codeCol = findExact(['código','codigo']);
-  if (!nameCol) return [];
   const items = [];
-  rows.forEach((row, ri) => {
+  if (nameCol) rows.forEach((row, ri) => {
     const name = String(row[nameCol] ?? '').trim();
     if (!name) return;
     const code = codeCol ? String(row[codeCol] ?? '').trim() : '';
     const key = `${si}|${ri}|${norm(name)}|${norm(code)}`;
     if (!items.some(x => x.key === key)) items.push({key,name,code,sheet:si,row:ri,sheetName:sh.name||`Hoja ${si+1}`});
   });
+  (book.productosManuales||[]).forEach((p,pi)=>{ const key='manual|'+p.id; if(!items.some(x=>norm(x.name)===norm(p.name)&&norm(x.code)===norm(p.code))) items.push({key,name:p.name,code:p.code||'',sheet:-1,row:pi,sheetName:'Productos creados'}); });
   return items.sort((a,b) => a.name.localeCompare(b.name,'es') || a.code.localeCompare(b.code,'es'));
 }
 function requestProductOptions(selectedKey, query="") {
@@ -1510,6 +1554,62 @@ $("addRequestLineBtn").onclick=()=>addRequestLine();
 $("saveRequestBtn").onclick=saveRequest;
 $("cancelEditRequestBtn").onclick=resetRequestEditor;
 $("requestSearch").oninput=renderRequestsTable;
+
+/* CONSIGNACIONES, PEDIDOS Y EMBARQUES */
+const ENTRY_CONFIG={
+ cons:{linesId:'consLines',statusId:'consStatus',productsKey:'consignaciones',counterKey:'consignacionCounter',prefix:'CON',operation:'Productos en consignación',tableId:'consTable',clientId:'consClient',dateId:'consDate',title:'consignación'},
+ pedido:{linesId:'pedidoLines',statusId:'pedidoStatus',productsKey:'pedidosFabricacion',counterKey:'pedidoCounter',prefix:'FAB',operation:'Pedido de fabricación',tableId:'pedidoTable',clientId:'pedidoClient',dateId:'pedidoDate',title:'pedido de fabricación'},
+ shipment:{linesId:'shipmentLines',statusId:'shipmentStatus',productsKey:'embarques',counterKey:'embarqueCounter',prefix:'EMB',operation:'Embarque',tableId:'shipmentTable',dateId:'shipmentDate',title:'embarque'}
+};
+const entryDrafts={cons:[{productKey:'',product:'',code:'',quantity:1}],pedido:[{productKey:'',product:'',code:'',quantity:1}],shipment:[{productKey:'',product:'',code:'',quantity:1}]};
+function catalogForEntry(){return buildRequestCatalog();}
+function renderEntryLines(type){
+ const cfg=ENTRY_CONFIG[type], box=$(cfg.linesId); if(!box)return; const products=catalogForEntry(); const lines=entryDrafts[type];
+ let html='<table class="request-lines"><thead><tr><th>Producto</th><th>Código</th><th>Cantidad</th><th>Acción</th></tr></thead><tbody>';
+ lines.forEach((l,i)=>{const chosen=products.find(p=>p.key===l.productKey); html+=`<tr><td><select data-entry-product="${type}:${i}"><option value="">Elegir producto…</option>${products.map(p=>`<option value="${esc(p.key)}" ${p.key===l.productKey?'selected':''}>${esc(p.name)}${p.code?' · '+esc(p.code):''}</option>`).join('')}</select></td><td><input readonly value="${esc(chosen?.code||l.code||'')}" aria-label="Código"></td><td><input type="number" min="1" step="1" value="${Math.max(1,Number(l.quantity)||1)}" data-entry-qty="${type}:${i}" aria-label="Cantidad"></td><td><button class="danger" data-entry-remove="${type}:${i}">Quitar</button></td></tr>`;});
+ box.innerHTML=html+'</tbody></table>';
+ box.querySelectorAll('[data-entry-product]').forEach(el=>el.onchange=()=>{const [t,ix]=el.dataset.entryProduct.split(':');const l=entryDrafts[t][Number(ix)],p=products.find(x=>x.key===el.value);l.productKey=p?.key||'';l.product=p?.name||'';l.code=p?.code||'';renderEntryLines(t);});
+ box.querySelectorAll('[data-entry-qty]').forEach(el=>el.onchange=()=>{const [t,ix]=el.dataset.entryQty.split(':');entryDrafts[t][Number(ix)].quantity=Math.max(1,Math.floor(Number(el.value)||1));el.value=entryDrafts[t][Number(ix)].quantity;});
+ box.querySelectorAll('[data-entry-remove]').forEach(el=>el.onclick=()=>{const [t,ix]=el.dataset.entryRemove.split(':');entryDrafts[t].splice(Number(ix),1);if(!entryDrafts[t].length)entryDrafts[t].push({productKey:'',product:'',code:'',quantity:1});renderEntryLines(t);});
+}
+function addEntryLine(type){entryDrafts[type].push({productKey:'',product:'',code:'',quantity:1});renderEntryLines(type);}
+async function createManualProduct(){
+ const name=prompt('Descripción del producto nuevo:'); if(!name||!name.trim())return;
+ const code=prompt('Código del producto (podés dejarlo vacío):')||'';
+ book.productosManuales=book.productosManuales||[];
+ const exists=book.productosManuales.find(p=>norm(p.name)===norm(name)&&norm(p.code)===norm(code));
+ if(!exists)book.productosManuales.push({id:uid(),name:name.trim(),code:code.trim(),createdAt:new Date().toISOString()});
+ try{await saveBook();['cons','pedido','shipment'].forEach(renderEntryLines);message('consStatus','Producto disponible en los desplegables.',false);message('pedidoStatus','Producto disponible en los desplegables.',false);message('shipmentStatus','Producto disponible en los desplegables.',false);}catch(e){alert('No se pudo guardar el producto: '+e.message);}
+}
+function formatDateOnly(value){if(!value)return '—';const d=new Date(value+'T12:00:00');return Number.isNaN(d.getTime())?value:d.toLocaleDateString('es-AR');}
+async function saveEntry(type){
+ const cfg=ENTRY_CONFIG[type], lines=entryDrafts[type].map(l=>({product:l.product,code:l.code||'',quantity:Math.max(1,Math.floor(Number(l.quantity)||1)),productKey:l.productKey})).filter(l=>l.product);
+ if(!lines.length||lines.length!==entryDrafts[type].length){message(cfg.statusId,'Elegí un producto válido en cada fila antes de registrar.',true);return;}
+ const date=$(cfg.dateId)?.value||'';if(!date){message(cfg.statusId,'Completá la fecha correspondiente antes de registrar.',true);return;}
+ const client=cfg.clientId?$(cfg.clientId).value.trim():'';if(cfg.clientId&&!client){message(cfg.statusId,'Ingresá el cliente antes de registrar.',true);return;}
+ const now=new Date().toISOString();book[cfg.counterKey]=(Number(book[cfg.counterKey])||0)+1;
+ const record={id:uid(),number:cfg.prefix+'-'+String(book[cfg.counterKey]).padStart(5,'0'),operation:cfg.operation,client,date,estimatedDate:date,label:type==='shipment'?($('shipmentLabel').value.trim()):'',createdAt:now,createdBy:currentUser?.email||'Usuario',lines};
+ book[cfg.productsKey]=book[cfg.productsKey]||[];book[cfg.productsKey].push(record);
+ try{await saveBook();message(cfg.statusId,`${cfg.operation}: ${record.number} registrado correctamente.`);entryDrafts[type]=[{productKey:'',product:'',code:'',quantity:1}];if(cfg.clientId)$(cfg.clientId).value='';$(cfg.dateId).value='';if(type==='shipment')$('shipmentLabel').value='';renderEntryLines(type);renderEntryTable(type);if(type==='shipment')renderShipmentCards();}
+ catch(e){book[cfg.productsKey]=book[cfg.productsKey].filter(x=>x.id!==record.id);book[cfg.counterKey]--;message(cfg.statusId,'No se pudo guardar: '+e.message,true);}
+}
+function renderEntryTable(type){
+ const cfg=ENTRY_CONFIG[type],box=$(cfg.tableId);if(!box)return;const records=[...(book[cfg.productsKey]||[])].sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
+ if(!records.length){box.innerHTML='<p class="muted" style="padding:12px">Todavía no hay registros.</p>';return;}
+ let html='<table class="request-lines"><thead><tr><th>N.º</th><th>Operación</th><th>Cliente / referencia</th><th>Fecha solicitada / estimada</th><th>Fecha y hora de registro</th><th>Productos y cantidades</th><th>Acción</th></tr></thead><tbody>';
+ records.forEach(r=>{const detail=(r.lines||[]).map(l=>`${esc(l.product)}${l.code?' ('+esc(l.code)+')':''} — ${esc(l.quantity)}`).join('<br>');html+=`<tr><td>${esc(r.number)}</td><td>${esc(r.operation)}</td><td>${esc(r.client||r.label||'—')}</td><td>${esc(formatDateOnly(r.date||r.estimatedDate))}</td><td>${esc(formatRequestDate(r.createdAt))}</td><td>${detail}</td><td><button class="danger" data-entry-delete="${type}:${esc(r.id)}">Eliminar</button></td></tr>`;});
+ box.innerHTML=html+'</tbody></table>';box.querySelectorAll('[data-entry-delete]').forEach(btn=>btn.onclick=async()=>{const [t,id]=btn.dataset.entryDelete.split(':');const c=ENTRY_CONFIG[t];if(!confirm('¿Eliminar este registro?'))return;const prev=book[c.productsKey];book[c.productsKey]=prev.filter(r=>r.id!==id);try{await saveBook();renderEntryTable(t);if(t==='shipment')renderShipmentCards();}catch(e){book[c.productsKey]=prev;alert('No se pudo eliminar: '+e.message);}});
+}
+function renderShipmentCards(){
+ const box=$('shipmentCards');if(!box)return;const today=new Date();today.setHours(0,0,0,0);
+ const list=(book.embarques||[]).filter(e=>e.date||e.estimatedDate).map(e=>{const d=new Date((e.date||e.estimatedDate)+'T00:00:00');return {...e,days:Math.ceil((d-today)/86400000)}}).sort((a,b)=>a.days-b.days);
+ if(!list.length){box.innerHTML='<p class="muted">No hay próximos embarques registrados. Cuando cargues uno, aparecerá acá con el contador actualizado.</p>';return;}
+ box.innerHTML=list.map(e=>{const status=e.days<0?`Fecha estimada vencida hace ${Math.abs(e.days)} día(s)`:e.days===0?'Ingresa hoy':`Faltan ${e.days} día(s) para su ingreso`;const products=(e.lines||[]).map(l=>`<li>${esc(l.product)}${l.code?' · Código '+esc(l.code):''} — Cantidad: ${esc(l.quantity)}</li>`).join('');return `<article class="shipment-card"><h3>${esc(e.label||e.number||'Embarque')}</h3><div class="shipment-days">${status}</div><p><strong>Fecha estimada:</strong> ${esc(formatDateOnly(e.date||e.estimatedDate))}</p><p><strong>Registrado:</strong> ${esc(formatRequestDate(e.createdAt))}</p><strong>Productos incluidos</strong><ul>${products}</ul></article>`;}).join('');
+}
+$('consAddLine').onclick=()=>addEntryLine('cons');$('pedidoAddLine').onclick=()=>addEntryLine('pedido');$('shipmentAddLine').onclick=()=>addEntryLine('shipment');
+$('consNewProduct').onclick=createManualProduct;$('pedidoNewProduct').onclick=createManualProduct;$('shipmentNewProduct').onclick=createManualProduct;
+$('consSave').onclick=()=>saveEntry('cons');$('pedidoSave').onclick=()=>saveEntry('pedido');$('shipmentSave').onclick=()=>saveEntry('shipment');
+setInterval(()=>{if(activeTab==='embarques')renderShipmentCards();},60*60*1000);
 
 function renderStock() {
   $("printCompany").textContent=book.design.title||"FITIN CAMPO";
