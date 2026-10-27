@@ -1325,24 +1325,26 @@ let editingRequestId = null;
 let requestCatalog = [];
 const REQUEST_OPERATIONS = ["Consignación", "Fabricación", "Embarque"];
 function buildRequestCatalog() {
-  // El catálogo de Solicitud se alimenta de todas las hojas importadas en Registros.
-  // Cada código se toma de la misma fila que su Descripción.
-  const items=[];
-  (book.sheets||[]).forEach((sh,si)=>{
-    const cols=columns(sh?.rows||[]);
-    const findExact=(names)=>cols.find(c=>names.includes(String(c).trim().toLocaleLowerCase('es')))||null;
-    const nameCol=findExact(['descripción','descripcion']);
-    const codeCol=findExact(['código','codigo']);
-    if(!nameCol) return;
-    (sh.rows||[]).forEach((row,ri)=>{
-      const name=String(row[nameCol]??'').trim();
-      if(!name) return;
-      const code=codeCol?String(row[codeCol]??'').trim():'';
-      const key=`${si}|${ri}|${norm(name)}|${norm(code)}`;
-      if(!items.some(x=>x.key===key)) items.push({key,name,code,sheet:si,row:ri,sheetName:sh.name||`Hoja ${si+1}`});
-    });
+  // Solicitud utiliza únicamente la hoja actualmente seleccionada en Registros.
+  // Así no se mezclan productos de otros Excel/hojas importados.
+  const si = Math.min(Math.max(0, Number(book.active) || 0), Math.max(0, (book.sheets||[]).length - 1));
+  const sh = (book.sheets||[])[si];
+  if (!sh) return [];
+  const rows = sh.rows || [];
+  const cols = columns(rows);
+  const findExact = names => cols.find(c => names.includes(String(c).trim().toLocaleLowerCase('es'))) || null;
+  const nameCol = findExact(['descripción','descripcion']);
+  const codeCol = findExact(['código','codigo']);
+  if (!nameCol) return [];
+  const items = [];
+  rows.forEach((row, ri) => {
+    const name = String(row[nameCol] ?? '').trim();
+    if (!name) return;
+    const code = codeCol ? String(row[codeCol] ?? '').trim() : '';
+    const key = `${si}|${ri}|${norm(name)}|${norm(code)}`;
+    if (!items.some(x => x.key === key)) items.push({key,name,code,sheet:si,row:ri,sheetName:sh.name||`Hoja ${si+1}`});
   });
-  return items.sort((a,b)=>a.name.localeCompare(b.name,'es')||a.code.localeCompare(b.code,'es')||a.sheetName.localeCompare(b.sheetName,'es'));
+  return items.sort((a,b) => a.name.localeCompare(b.name,'es') || a.code.localeCompare(b.code,'es'));
 }
 function requestProductOptions(selectedKey, query="") {
   requestCatalog=buildRequestCatalog();
