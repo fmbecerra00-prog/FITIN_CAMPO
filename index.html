@@ -1159,28 +1159,75 @@ function inventoryRows() {
   const c={sheet:Number($("productSheet").value||0),name:$("productNameCol").value,code:$("productCodeCol").value};
   const loc=selectedLocationConfig();
   const grouped=new Map();
+  const productKey=(name,code)=>String(code||'').trim()?('code:'+norm(code)):('name:'+norm(name));
+  const ensure=(name,code='')=>{
+    name=String(name??'').trim(); code=String(code??'').trim(); if(!name)return null;
+    const key=productKey(name,code);
+    if(!grouped.has(key)) grouped.set(key,{key,name,code,trenque:0,consignacion:0,fabricacion:0,legacyEmbarques:0,shipmentValues:{},embarques:0});
+    const item=grouped.get(key); if(!item.code&&code)item.code=code; return item;
+  };
   activeRows(c.sheet).forEach(r=>{
-    const name=String(r[c.name]??"").trim(); if(!name) return;
-    const code=String(r[c.code]??"").trim();
-    const key=name.toLocaleLowerCase("es")+"|"+code;
-    if(!grouped.has(key)) grouped.set(key,{name,code,trenque:0,consignacion:0,fabricacion:0,embarques:0});
-    const item=grouped.get(key);
-    Object.keys(loc).forEach(k=>{if(loc[k]) item[k]+=numberValue(r[loc[k]]);});
+    const item=ensure(r[c.name],c.code?r[c.code]:''); if(!item)return;
+    item.trenque+=loc.trenque?numberValue(r[loc.trenque]):0;
+    item.consignacion+=loc.consignacion?numberValue(r[loc.consignacion]):0;
+    item.fabricacion+=loc.fabricacion?numberValue(r[loc.fabricacion]):0;
+    item.legacyEmbarques+=loc.embarques?numberValue(r[loc.embarques]):0;
   });
-  return [...grouped.values()].sort((a,b)=>a.name.localeCompare(b.name,"es"));
+  // Incluye productos creados desde los formularios aunque todavía no existan en la hoja importada.
+  (book.productosManuales||[]).forEach(p=>ensure(p.name,p.code||''));
+
+  const findItem=line=>{
+    const code=String(line.code||'').trim(), name=String(line.product||'').trim();
+    let item=null;
+    if(code) item=[...grouped.values()].find(x=>norm(x.code)===norm(code));
+    if(!item&&name) item=[...grouped.values()].find(x=>norm(x.name)===norm(name) && (!code||!x.code||norm(x.code)===norm(code)));
+    if(!item&&name) item=ensure(name,code);
+    return item;
+  };
+  // Cada registro de consignación mueve stock desde Trenque Lauquen hacia Consignación.
+  (book.consignaciones||[]).forEach(rec=>(rec.lines||[]).forEach(line=>{
+    const item=findItem(line); if(!item)return; const qty=numberValue(line.quantity);
+    item.trenque-=qty; item.consignacion+=qty;
+  }));
+  // Los pedidos abiertos de fabricación se agregan a la columna En fabricación.
+  (book.pedidosFabricacion||[]).forEach(rec=>(rec.lines||[]).forEach(line=>{
+    const item=findItem(line); if(!item)return; item.fabricacion+=numberValue(line.quantity);
+  }));
+  // Cada embarque tiene su propia columna. El ID del registro permite no duplicar cantidades al volver a dibujar la tabla.
+  const shipmentRecords=[...(book.embarques||[])].sort((a,b)=>String(a.createdAt||'').localeCompare(String(b.createdAt||'')));
+  const shipmentColumns=shipmentRecords.map((rec,i)=>({id:rec.id||rec.number||('embarque-'+(i+1)),key:'shipment_'+(rec.id||rec.number||i),label:(rec.label?String(rec.label)+' · ':'')+String(rec.number||('Embarque '+(i+1)))}));
+  shipmentRecords.forEach((rec,i)=>(rec.lines||[]).forEach(line=>{
+    const item=findItem(line); if(!item)return; const qty=numberValue(line.quantity);
+    const col=shipmentColumns[i]; item.shipmentValues[col.key]=(item.shipmentValues[col.key]||0)+qty;
+  }));
+  grouped.forEach(item=>{item.embarques=item.legacyEmbarques+Object.values(item.shipmentValues).reduce((a,b)=>a+b,0);});
+  const rows=[...grouped.values()].sort((a,b)=>a.name.localeCompare(b.name,'es')||a.code.localeCompare(b.code,'es'));
+  rows.shipmentColumns=shipmentColumns;
+  return rows;
 }
 function renderInventory() {
   const rows=inventoryRows();
-  const total=rows.reduce((sum,r)=>sum+r.trenque+r.consignacion+r.fabricacion+r.embarques,0);
+  const shipmentColumns=rows.shipmentColumns||[];
+  const total=rows.reduce((sum,r)=>sum+r.trenque+r.consignacion+r.fabricacion+r.legacyEmbarques+Object.values(r.shipmentValues||{}).reduce((a,b)=>a+b,0),0);
   $("inventoryStats").innerHTML=[
     ["Total de productos ofrecidos",rows.length,"Productos únicos según nombre y código"],
-    ["Stock total consolidado",total,"Suma de las ubicaciones configuradas"]
+    ["Stock total consolidado",total,"Trenque Lauquen + Consignación + En fabricación + embarques"]
   ].map(([a,b,c])=>`<div class="stat"><span class="muted">${esc(a)}</span><strong>${esc(b)}</strong><small>${esc(c)}</small></div>`).join("");
-  const headers=["Producto","Código","Stock total","Trenque Lauquen","Consignación","En fabricación","Embarques por fecha"];
-  $("inventoryTable").innerHTML='<table data-width-key="inventory"><thead><tr>'+headers.map(h=>`<th>${esc(h)}</th>`).join("")+'</tr></thead><tbody>'+rows.map(r=>{
-    const totalRow=r.trenque+r.consignacion+r.fabricacion+r.embarques;
-    return `<tr><td>${esc(r.name)}</td><td>${esc(r.code||"—")}</td><td><strong>${totalRow}</strong></td><td>${r.trenque}</td><td>${r.consignacion}</td><td>${r.fabricacion}</td><td>${r.embarques}</td></tr>`;
-  }).join("")+'</tbody></table>';
+  const headers=["Producto","Código","Stock total","Trenque Lauquen","Consignación","En fabricación"];
+  if(rows.some(r=>r.legacyEmbarques!==0)) headers.push("Embarques existentes");
+  shipmentColumns.forEach(col=>headers.push(col.label));
+  if(!shipmentColumns.length&&!rows.some(r=>r.legacyEmbarques!==0)) headers.push("Embarques");
+  const body=rows.map(r=>{
+    const shipmentTotal=Object.values(r.shipmentValues||{}).reduce((a,b)=>a+b,0);
+    const legacy=(headers.includes("Embarques existentes")?r.legacyEmbarques:0);
+    const totalRow=r.trenque+r.consignacion+r.fabricacion+legacy+shipmentTotal;
+    const cells=[`<td>${esc(r.name)}</td>`,`<td>${esc(r.code||"—")}</td>`,`<td><strong>${totalRow}</strong></td>`,`<td>${r.trenque}</td>`,`<td>${r.consignacion}</td>`,`<td>${r.fabricacion}</td>`];
+    if(headers.includes("Embarques existentes"))cells.push(`<td>${r.legacyEmbarques}</td>`);
+    shipmentColumns.forEach(col=>cells.push(`<td>${numberValue(r.shipmentValues?.[col.key]||0)}</td>`));
+    if(!shipmentColumns.length&&!headers.includes("Embarques existentes"))cells.push('<td>0</td>');
+    return '<tr>'+cells.join('')+'</tr>';
+  }).join("");
+  $("inventoryTable").innerHTML='<table data-width-key="inventory"><thead><tr>'+headers.map(h=>`<th>${esc(h)}</th>`).join("")+'</tr></thead><tbody>'+body+'</tbody></table>';
   applyColumnWidths($("inventoryTable").querySelector("table"),"inventory",headers);
   renderAvailabilityOptions();
   renderDashboard();
@@ -1590,7 +1637,7 @@ async function saveEntry(type){
  const now=new Date().toISOString();book[cfg.counterKey]=(Number(book[cfg.counterKey])||0)+1;
  const record={id:uid(),number:cfg.prefix+'-'+String(book[cfg.counterKey]).padStart(5,'0'),operation:cfg.operation,client,date,estimatedDate:date,label:type==='shipment'?($('shipmentLabel').value.trim()):'',createdAt:now,createdBy:currentUser?.email||'Usuario',lines};
  book[cfg.productsKey]=book[cfg.productsKey]||[];book[cfg.productsKey].push(record);
- try{await saveBook();message(cfg.statusId,`${cfg.operation}: ${record.number} registrado correctamente.`);entryDrafts[type]=[{productKey:'',product:'',code:'',quantity:1}];if(cfg.clientId)$(cfg.clientId).value='';$(cfg.dateId).value='';if(type==='shipment')$('shipmentLabel').value='';renderEntryLines(type);renderEntryTable(type);if(type==='shipment')renderShipmentCards();}
+ try{await saveBook();message(cfg.statusId,`${cfg.operation}: ${record.number} registrado correctamente.`);entryDrafts[type]=[{productKey:'',product:'',code:'',quantity:1}];if(cfg.clientId)$(cfg.clientId).value='';$(cfg.dateId).value='';if(type==='shipment')$('shipmentLabel').value='';renderEntryLines(type);renderEntryTable(type);if(type==='shipment')renderShipmentCards();renderInventory();}
  catch(e){book[cfg.productsKey]=book[cfg.productsKey].filter(x=>x.id!==record.id);book[cfg.counterKey]--;message(cfg.statusId,'No se pudo guardar: '+e.message,true);}
 }
 function renderEntryTable(type){
@@ -1598,7 +1645,7 @@ function renderEntryTable(type){
  if(!records.length){box.innerHTML='<p class="muted" style="padding:12px">Todavía no hay registros.</p>';return;}
  let html='<table class="request-lines"><thead><tr><th>N.º</th><th>Operación</th><th>Cliente / referencia</th><th>Fecha solicitada / estimada</th><th>Fecha y hora de registro</th><th>Productos y cantidades</th><th>Acción</th></tr></thead><tbody>';
  records.forEach(r=>{const detail=(r.lines||[]).map(l=>`${esc(l.product)}${l.code?' ('+esc(l.code)+')':''} — ${esc(l.quantity)}`).join('<br>');html+=`<tr><td>${esc(r.number)}</td><td>${esc(r.operation)}</td><td>${esc(r.client||r.label||'—')}</td><td>${esc(formatDateOnly(r.date||r.estimatedDate))}</td><td>${esc(formatRequestDate(r.createdAt))}</td><td>${detail}</td><td><button class="danger" data-entry-delete="${type}:${esc(r.id)}">Eliminar</button></td></tr>`;});
- box.innerHTML=html+'</tbody></table>';box.querySelectorAll('[data-entry-delete]').forEach(btn=>btn.onclick=async()=>{const [t,id]=btn.dataset.entryDelete.split(':');const c=ENTRY_CONFIG[t];if(!confirm('¿Eliminar este registro?'))return;const prev=book[c.productsKey];book[c.productsKey]=prev.filter(r=>r.id!==id);try{await saveBook();renderEntryTable(t);if(t==='shipment')renderShipmentCards();}catch(e){book[c.productsKey]=prev;alert('No se pudo eliminar: '+e.message);}});
+ box.innerHTML=html+'</tbody></table>';box.querySelectorAll('[data-entry-delete]').forEach(btn=>btn.onclick=async()=>{const [t,id]=btn.dataset.entryDelete.split(':');const c=ENTRY_CONFIG[t];if(!confirm('¿Eliminar este registro?'))return;const prev=book[c.productsKey];book[c.productsKey]=prev.filter(r=>r.id!==id);try{await saveBook();renderEntryTable(t);if(t==='shipment')renderShipmentCards();renderInventory();}catch(e){book[c.productsKey]=prev;alert('No se pudo eliminar: '+e.message);}});
 }
 function renderShipmentCards(){
  const box=$('shipmentCards');if(!box)return;const today=new Date();today.setHours(0,0,0,0);
