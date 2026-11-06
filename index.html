@@ -679,14 +679,16 @@ $("loginForm").addEventListener("submit", async e => {
   }
 });
 
-$("logoutBtn").addEventListener("click", async () => {
+const logoutButton = $("logoutBtn");
+if (logoutButton) logoutButton.addEventListener("click", async () => {
   try {
     const { error } = await sb.auth.signOut();
     if (error) throw error;
     currentUser = null;
     $("app").style.display = "none";
     $("login").style.display = "block";
-    $("password").value = "";
+    const passwordInput = $("password");
+    if (passwordInput) passwordInput.value = "";
     message("loginStatus", "Sesión cerrada.");
   } catch (err) {
     alert("No se pudo cerrar la sesión: " + (err?.message || err));
