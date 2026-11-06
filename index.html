@@ -1387,15 +1387,40 @@ function renderReplenishmentConfig(){
  const rows=inventoryRows();
  if(!rows.length){box.innerHTML='<p class="muted">No hay productos en el inventario para configurar.</p>';return;}
  const canEdit=!!currentUser;
- box.innerHTML='<table><thead><tr><th>Producto</th><th>Código</th><th>Mínimo Trenque Lauquen</th><th>Mínimo en embarques pendientes</th><th>Mínimo en fabricación</th><th>Mínimo en consignación</th></tr></thead><tbody>'+rows.map(r=>{const t=replenishmentThreshold(r);return `<tr><td>${esc(r.name)}</td><td>${esc(r.code||'—')}</td>${[['trenque','Trenque'],['embarques','Embarques'],['fabricacion','Fabricación'],['consignacion','Consignación']].map(([k])=>`<td><input type="number" min="0" step="1" data-replenish="${esc(r.key)}:${k}" value="${Number(t[k]||0)}" ${canEdit?'':'disabled'} style="width:110px"></td>`).join('')}</tr>`;}).join('')+'</tbody></table>';
+ // La clave completa del producto se guarda en un atributo independiente del campo.
+ // No dividir la clave por ":", porque las claves comienzan con "code:" o "name:".
+ box.innerHTML='<table><thead><tr><th>Producto</th><th>Código</th><th>Mínimo Trenque Lauquen</th><th>Mínimo en embarques pendientes</th><th>Mínimo en fabricación</th><th>Mínimo en consignación</th></tr></thead><tbody>'+rows.map(r=>{const t=replenishmentThreshold(r);return `<tr><td>${esc(r.name)}</td><td>${esc(r.code||'—')}</td>${[['trenque','Trenque'],['embarques','Embarques'],['fabricacion','Fabricación'],['consignacion','Consignación']].map(([k])=>`<td><input type="number" min="0" step="1" data-replenish-key="${esc(r.key)}" data-replenish-field="${k}" value="${Number(t[k]||0)}" ${canEdit?'':'disabled'} style="width:110px"></td>`).join('')}</tr>`;}).join('')+'</tbody></table>';
  $('saveReplenishmentConfig').style.display=canEdit?'':'none';
 }
 $('traceProduct')?.addEventListener('change',renderTraceability);
 $('saveReplenishmentConfig')?.addEventListener('click',async()=>{
+ const btn=$('saveReplenishmentConfig');
+ if(btn.disabled)return;
  const previous=JSON.parse(JSON.stringify(book.reposiciones||{}));
- document.querySelectorAll('[data-replenish]').forEach(input=>{const [key,k]=input.dataset.replenish.split(':');book.reposiciones[key]=book.reposiciones[key]||{};book.reposiciones[key][k]=Math.max(0,Math.floor(Number(input.value)||0));});
- try{await saveBook();renderReplenishmentConfig();renderTraceability();message('replenishmentStatus','Parámetros guardados correctamente.');}
- catch(e){book.reposiciones=previous;message('replenishmentStatus','No se pudieron guardar los parámetros: '+e.message,true);}
+ const next={...(book.reposiciones||{})};
+ document.querySelectorAll('[data-replenish-key][data-replenish-field]').forEach(input=>{
+   const key=input.dataset.replenishKey;
+   const field=input.dataset.replenishField;
+   if(!key||!['trenque','embarques','fabricacion','consignacion'].includes(field))return;
+   next[key]={...(next[key]||{}),[field]:Math.max(0,Math.floor(Number(input.value)||0))};
+ });
+ book.reposiciones=next;
+ btn.disabled=true;
+ const oldLabel=btn.textContent;btn.textContent='Guardando...';
+ try{
+   await saveBook();
+   // Vuelve a consultar el estado persistido para verificar que los valores no se pierdan.
+   await loadBook();
+   renderReplenishmentConfig();
+   renderTraceability();
+   message('replenishmentStatus','Parámetros guardados correctamente. Se verificó su persistencia en Supabase.');
+ }catch(e){
+   book.reposiciones=previous;
+   message('replenishmentStatus','No se pudieron guardar/verificar los parámetros: '+e.message,true);
+   renderReplenishmentConfig();
+ }finally{
+   btn.disabled=false;btn.textContent=oldLabel;
+ }
 });
 
 /* VENTAS: lectura de factura, asignación de stock por origen y registro protegido */
