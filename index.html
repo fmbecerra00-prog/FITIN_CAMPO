@@ -217,13 +217,13 @@ footer {text-align:center;color:var(--muted);padding:22px}
       <h2>Inventario general de productos</h2>
       <p class="muted availability-date" id="inventoryAvailabilityDate">Disponibilidad —</p>
       <p class="muted">Listado consolidado por producto y código.</p>
-      <div class="design-grid no-print">
+      <div class="design-grid no-print" style="display:none" aria-hidden="true">
         <div><label>Stock Trenque Lauquen</label><select id="locTrenque"></select></div>
         <div><label>Stock en consignación</label><select id="locConsignacion"></select></div>
         <div><label>Stock en fabricación</label><select id="locFabricacion"></select></div>
         <div><label>Embarques (por fecha)</label><select id="locEmbarques"></select></div>
       </div>
-      <div class="toolbar no-print"><button id="saveLocationsBtn" class="secondary">Guardar columnas de stock</button><button id="refreshInventoryBtn">Actualizar inventario</button></div>
+      <div class="toolbar no-print"><button id="refreshInventoryBtn">Actualizar inventario</button></div>
       <div id="inventoryStats" class="grid"></div>
       <div id="inventoryTable" class="table-wrap"></div>
       </div><!-- /inventoryPrintArea -->
@@ -1336,23 +1336,18 @@ function inventoryRows() {
 function renderInventory() {
   const rows=inventoryRows();
   const shipmentColumns=rows.shipmentColumns||[];
-  const total=rows.reduce((sum,r)=>sum+r.trenque+r.consignacion+r.fabricacion+r.legacyEmbarques+shipmentColumns.filter(c=>!c.received).reduce((a,c)=>a+numberValue(r.shipmentValues?.[c.key]||0),0),0);
+  const total=rows.reduce((sum,r)=>sum+r.trenque+r.consignacion+r.fabricacion+shipmentColumns.filter(c=>!c.received).reduce((a,c)=>a+numberValue(r.shipmentValues?.[c.key]||0),0),0);
   $("inventoryStats").innerHTML=[
     ["Total de productos ofrecidos",rows.length,"Productos únicos según nombre y código"],
     ["Stock total consolidado",total,"Trenque Lauquen + Consignación + En fabricación + embarques"]
   ].map(([a,b,c])=>`<div class="stat"><span class="muted">${esc(a)}</span><strong>${esc(b)}</strong><small>${esc(c)}</small></div>`).join("");
   const headers=["Producto","Código","Stock total","Demanda","Trenque Lauquen","Consignación","En fabricación"];
-  if(rows.some(r=>r.legacyEmbarques!==0)) headers.push("Embarques existentes");
   shipmentColumns.forEach(col=>headers.push(col.label));
-  if(!shipmentColumns.length&&!rows.some(r=>r.legacyEmbarques!==0)) headers.push("Embarques");
   const body=rows.map(r=>{
     const shipmentTotal=shipmentColumns.filter(col=>!col.received).reduce((a,col)=>a+numberValue(r.shipmentValues?.[col.key]||0),0);
-    const legacy=(headers.includes("Embarques existentes")?r.legacyEmbarques:0);
-    const totalRow=r.trenque+r.consignacion+r.fabricacion+legacy+shipmentTotal;
+    const totalRow=r.trenque+r.consignacion+r.fabricacion+shipmentTotal;
     const cells=[`<td>${esc(r.name)}</td>`,`<td>${esc(r.code||"—")}</td>`,`<td><strong>${totalRow}</strong></td>`,`<td><strong>${r.demanda||0}</strong></td>`,`<td>${r.trenque}</td>`,`<td>${r.consignacion}</td>`,`<td>${r.fabricacion}</td>`];
-    if(headers.includes("Embarques existentes"))cells.push(`<td>${r.legacyEmbarques}</td>`);
     shipmentColumns.forEach(col=>cells.push(`<td>${numberValue(r.shipmentValues?.[col.key]||0)}</td>`));
-    if(!shipmentColumns.length&&!headers.includes("Embarques existentes"))cells.push('<td>0</td>');
     return '<tr>'+cells.join('')+'</tr>';
   }).join("");
   $("inventoryTable").innerHTML='<table data-width-key="inventory"><thead><tr>'+headers.map(h=>`<th>${esc(h)}</th>`).join("")+'</tr></thead><tbody>'+body+'</tbody></table>';
