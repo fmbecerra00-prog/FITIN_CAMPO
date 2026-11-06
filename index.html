@@ -874,8 +874,10 @@ function allTabs() {
   return [
     {id:"dashboard",label:book.tabLabels.dashboard||"Inicio"},
     {id:"records",label:book.tabLabels.records||"Registros"},
-    {id:"stock",label:book.tabLabels.stock||"Stock actual"},
-    {id:"solicitud",label:"Solicitud"},
+    ...(isAdminUser() ? [
+      {id:"stock",label:book.tabLabels.stock||"Stock actual"},
+      {id:"solicitud",label:"Solicitud"}
+    ] : []),
     {id:"consignacion",label:"Productos en Consignación"},
     {id:"pedidos",label:"Pedidos de fabricación"},
     {id:"embarques",label:"Embarques"},
@@ -888,7 +890,7 @@ function allTabs() {
 }
 function renderTabs() {
   $("tabs").innerHTML="";
-  allTabs().filter(t=>!(PUBLIC_MODE && (t.id==="design" || t.id==="stock"))).forEach(t=>{
+  allTabs().filter(t=>!(PUBLIC_MODE && (t.id==="design" || t.id==="stock" || t.id==="solicitud"))).forEach(t=>{
     const b=document.createElement("button");
     b.textContent=t.label;
     b.className=t.id===activeTab?"active":"";
@@ -897,7 +899,14 @@ function renderTabs() {
   });
 }
 function showTab(id) {
-  if((PUBLIC_MODE && (id==="design" || id==="stock" || id==="ventas")) || (id==="design" && !isAdminUser())) return;
+  // Stock actual y Solicitud son páginas exclusivas de la cuenta administradora.
+  // La validación también impide abrirlas mediante llamadas directas a showTab().
+  if((id==="stock" || id==="solicitud") && !isAdminUser()) {
+    activeTab="dashboard";
+    showTab("dashboard");
+    return;
+  }
+  if((PUBLIC_MODE && (id==="design" || id==="stock" || id==="solicitud" || id==="ventas")) || (id==="design" && !isAdminUser())) return;
   activeTab=id;
   document.body.classList.toggle("records-active",id==="records");
   ["dashboardTab","recordsTab","stockTab","solicitudTab","consignacionTab","pedidosTab","embarquesTab","trazabilidadTab","reposicionesTab","ventasTab","designTab","customTab"].forEach(x=>$(x).classList.add("hidden"));
