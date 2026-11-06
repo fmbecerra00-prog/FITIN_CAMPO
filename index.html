@@ -305,6 +305,29 @@ footer {text-align:center;color:var(--muted);padding:22px}
     </div><div class="panel"><h2>Embarques registrados</h2><div id="shipmentTable" class="table-wrap"></div></div>
   </section>
 
+
+  <section id="trazabilidadTab" class="hidden">
+    <div class="panel">
+      <h2>Registro de trazabilidad por producto</h2>
+      <p class="muted">Consultá el recorrido y la distribución del stock en cada situación. Los datos se calculan junto con el stock general.</p>
+      <div class="design-grid"><div><label for="traceProduct">Buscar producto</label><select id="traceProduct"></select></div></div>
+      <div id="traceDetail" class="grid"><p class="muted">Elegí un producto para consultar su trazabilidad.</p></div>
+    </div>
+    <div class="panel">
+      <h2>Reposiciones</h2>
+      <p class="muted">Avisos calculados según el stock de Trenque Lauquen y los umbrales definidos para cada producto.</p>
+      <div id="replenishmentAlerts"></div>
+    </div>
+  </section>
+  <section id="reposicionesTab" class="hidden">
+    <div class="panel">
+      <h2>Parámetros de reposición por producto</h2>
+      <p class="muted">Definí el mínimo que debe quedar en Trenque Lauquen y los mínimos que deberían cubrir los embarques pendientes, fabricación y consignación. La alarma se activa cuando el stock local alcanza su mínimo y la cobertura conjunta de esas tres situaciones también queda por debajo de sus mínimos configurados.</p>
+      <div id="replenishmentConfigTable" class="table-wrap"></div>
+      <div class="toolbar no-print"><button id="saveReplenishmentConfig">Guardar parámetros de reposición</button></div>
+      <p id="replenishmentStatus" class="status"></p>
+    </div>
+  </section>
   <section id="stockTab" class="hidden">
     <div id="stockPrintArea">
       <div id="stockPrintHeader">
@@ -501,6 +524,7 @@ function makeDefaultBook() {
     pedidosFabricacion:[],
     embarques:[],
     productosManuales:[],
+    reposiciones:{},
     consignacionCounter:0,
     pedidoCounter:0,
     embarqueCounter:0,
@@ -669,6 +693,7 @@ async function loadBook() {
     pedidosFabricacion:Array.isArray(saved.pedidosFabricacion)?saved.pedidosFabricacion:[],
     embarques:Array.isArray(saved.embarques)?saved.embarques:[],
     productosManuales:Array.isArray(saved.productosManuales)?saved.productosManuales:[],
+    reposiciones:saved.reposiciones&&typeof saved.reposiciones==="object"?saved.reposiciones:{},
     consignacionCounter:Number(saved.consignacionCounter)||0, pedidoCounter:Number(saved.pedidoCounter)||0, embarqueCounter:Number(saved.embarqueCounter)||0,
     requestCounter:Number(saved.requestCounter)||0,
     countConfig:saved.countConfig||defaults.countConfig,
@@ -795,6 +820,8 @@ function allTabs() {
     {id:"consignacion",label:"Productos en Consignación"},
     {id:"pedidos",label:"Pedidos de fabricación"},
     {id:"embarques",label:"Embarques"},
+    {id:"trazabilidad",label:"Trazabilidad"},
+    {id:"reposiciones",label:"Reposiciones"},
     ...book.customTabs,
     ...(isAdminUser() ? [{id:"design",label:book.tabLabels.design||"Diseño de página"}] : [])
   ];
@@ -813,9 +840,9 @@ function showTab(id) {
   if((PUBLIC_MODE && (id==="design" || id==="stock")) || (id==="design" && !isAdminUser())) return;
   activeTab=id;
   document.body.classList.toggle("records-active",id==="records");
-  ["dashboardTab","recordsTab","stockTab","solicitudTab","consignacionTab","pedidosTab","embarquesTab","designTab","customTab"].forEach(x=>$(x).classList.add("hidden"));
+  ["dashboardTab","recordsTab","stockTab","solicitudTab","consignacionTab","pedidosTab","embarquesTab","trazabilidadTab","reposicionesTab","designTab","customTab"].forEach(x=>$(x).classList.add("hidden"));
 
-  if(["dashboard","records","stock","solicitud","consignacion","pedidos","embarques","design"].includes(id)) {
+  if(["dashboard","records","stock","solicitud","consignacion","pedidos","embarques","trazabilidad","reposiciones","design"].includes(id)) {
     $(id+"Tab").classList.remove("hidden");
   } else {
     $("customTab").classList.remove("hidden");
@@ -834,6 +861,8 @@ function showTab(id) {
   if(id==="consignacion") {renderEntryLines("cons");renderEntryTable("cons");}
   if(id==="pedidos") {renderEntryLines("pedido");renderEntryTable("pedido");}
   if(id==="embarques") {renderEntryLines("shipment");renderEntryTable("shipment");renderShipmentCards();}
+  if(id==="trazabilidad") renderTraceability();
+  if(id==="reposiciones") renderReplenishmentConfig();
   if(id==="design") {renderTabTitleEditor();renderWidgetEditor();renderColumnWidthTargets();renderColumnWidthEditor();renderLogoEditor();renderLogos();}
 }
 
@@ -1237,7 +1266,62 @@ function renderInventory() {
   applyColumnWidths($("inventoryTable").querySelector("table"),"inventory",headers);
   renderAvailabilityOptions();
   renderDashboard();
+  if(activeTab==="trazabilidad") renderTraceability();
+  if(activeTab==="reposiciones") renderReplenishmentConfig();
 }
+
+function traceDataForProduct(row){
+ const cons=(book.consignaciones||[]).flatMap(rec=>(rec.lines||[]).filter(l=>norm(l.code||'')===norm(row.code||'') || (!row.code&&norm(l.product)===norm(row.name))).map(l=>({client:rec.client||'Cliente sin identificar',number:rec.number||'',quantity:numberValue(l.quantity),date:rec.date||''})));
+ const fabrication=(book.pedidosFabricacion||[]).flatMap(rec=>(rec.lines||[]).filter(l=>norm(l.code||'')===norm(row.code||'') || (!row.code&&norm(l.product)===norm(row.name))).map(l=>({number:rec.number||'',quantity:numberValue(l.quantity),date:rec.date||''})));
+ const shipments=(book.embarques||[]).flatMap(rec=>(rec.lines||[]).filter(l=>norm(l.code||'')===norm(row.code||'') || (!row.code&&norm(l.product)===norm(row.name))).map(l=>({number:rec.number||rec.label||'Embarque',quantity:numberValue(l.quantity),received:!!(rec.receivedAt||rec.received),date:rec.date||rec.estimatedDate||''})));
+ return {cons,fabrication,shipments};
+}
+function renderTraceability(){
+ const sel=$('traceProduct'); if(!sel)return;
+ const rows=inventoryRows(),old=sel.value;
+ sel.innerHTML='<option value="">— Elegir producto —</option>'+rows.map(r=>`<option value="${esc(r.key)}">${esc(r.name)}${r.code?' · '+esc(r.code):''}</option>`).join('');
+ if(rows.some(r=>r.key===old))sel.value=old;
+ const chosen=rows.find(r=>r.key===sel.value),box=$('traceDetail');
+ if(!chosen){box.innerHTML='<p class="muted">Elegí un producto para consultar su trazabilidad.</p>';$('replenishmentAlerts').innerHTML=renderReplenishmentAlerts(rows);return;}
+ const d=traceDataForProduct(chosen);
+ const list=(items,fmt)=>items.length?'<ul>'+items.map(fmt).join('')+'</ul>':'<p class="muted">Sin registros.</p>';
+ box.innerHTML=`
+ <div class="stat"><span class="muted">Stock en Trenque Lauquen</span><strong>${chosen.trenque}</strong></div>
+ <div class="stat"><span class="muted">Stock en consignación</span><strong>${chosen.consignacion}</strong>${list(d.cons,x=>`<li>${esc(x.client)} · ${esc(x.quantity)} unidades ${x.number?'('+esc(x.number)+')':''}</li>`)}</div>
+ <div class="stat"><span class="muted">Stock en fabricación</span><strong>${chosen.fabricacion}</strong>${list(d.fabrication,x=>`<li>${esc(x.number)} · ${esc(x.quantity)} unidades</li>`)}</div>
+ <div class="stat"><span class="muted">Stock por embarque</span>${list(d.shipments,x=>`<li>${esc(x.number)} · ${esc(x.quantity)} unidades · ${x.received?'Recibido':'Pendiente'}</li>`)}</div>`;
+ $('replenishmentAlerts').innerHTML=renderReplenishmentAlerts(rows);
+}
+function replenishmentThreshold(row){return (book.reposiciones||{})[row.key]||{trenque:0,embarques:0,fabricacion:0,consignacion:0};}
+function replenishmentState(row){
+ const t=replenishmentThreshold(row),d=traceDataForProduct(row);
+ const pending=d.shipments.filter(x=>!x.received).reduce((a,x)=>a+x.quantity,0);
+ const fab=d.fabrication.reduce((a,x)=>a+x.quantity,0),cons=d.cons.reduce((a,x)=>a+x.quantity,0);
+ const localLow=row.trenque<=Number(t.trenque||0);
+ const coverageLow=pending<Number(t.embarques||0)||fab<Number(t.fabricacion||0)||cons<Number(t.consignacion||0);
+ return {alarm:localLow&&coverageLow,pending,fab,cons,t};
+}
+function renderReplenishmentAlerts(rows=inventoryRows()){
+ const alarms=rows.map(r=>({r,state:replenishmentState(r)})).filter(x=>x.state.alarm).sort((a,b)=>a.r.name.localeCompare(b.r.name,'es'));
+ if(!alarms.length)return '<p class="muted">No hay productos que requieran reposición según los parámetros actuales.</p>';
+ return '<table><thead><tr><th>Producto</th><th>Código</th><th>Stock Trenque Lauquen</th><th>Reposición</th><th>Cobertura pendiente</th></tr></thead><tbody>'+alarms.map(({r,state})=>`<tr><td>${esc(r.name)}</td><td>${esc(r.code||'—')}</td><td>${r.trenque}</td><td><strong>REPONER</strong></td><td>Embarques: ${state.pending} · Fabricación: ${state.fab} · Consignación: ${state.cons}</td></tr>`).join('')+'</tbody></table>';
+}
+function renderReplenishmentConfig(){
+ const box=$('replenishmentConfigTable');if(!box)return;
+ const rows=inventoryRows();
+ if(!rows.length){box.innerHTML='<p class="muted">No hay productos en el inventario para configurar.</p>';return;}
+ const canEdit=isAdminUser();
+ box.innerHTML='<table><thead><tr><th>Producto</th><th>Código</th><th>Mínimo Trenque Lauquen</th><th>Mínimo en embarques pendientes</th><th>Mínimo en fabricación</th><th>Mínimo en consignación</th></tr></thead><tbody>'+rows.map(r=>{const t=replenishmentThreshold(r);return `<tr><td>${esc(r.name)}</td><td>${esc(r.code||'—')}</td>${[['trenque','Trenque'],['embarques','Embarques'],['fabricacion','Fabricación'],['consignacion','Consignación']].map(([k])=>`<td><input type="number" min="0" step="1" data-replenish="${esc(r.key)}:${k}" value="${Number(t[k]||0)}" ${canEdit?'':'disabled'} style="width:110px"></td>`).join('')}</tr>`;}).join('')+'</tbody></table>';
+ $('saveReplenishmentConfig').style.display=canEdit?'':'none';
+}
+$('traceProduct')?.addEventListener('change',renderTraceability);
+$('saveReplenishmentConfig')?.addEventListener('click',async()=>{
+ const previous=JSON.parse(JSON.stringify(book.reposiciones||{}));
+ document.querySelectorAll('[data-replenish]').forEach(input=>{const [key,k]=input.dataset.replenish.split(':');book.reposiciones[key]=book.reposiciones[key]||{};book.reposiciones[key][k]=Math.max(0,Math.floor(Number(input.value)||0));});
+ try{await saveBook();renderReplenishmentConfig();renderTraceability();message('replenishmentStatus','Parámetros guardados correctamente.');}
+ catch(e){book.reposiciones=previous;message('replenishmentStatus','No se pudieron guardar los parámetros: '+e.message,true);}
+});
+
 function renderAvailabilityOptions() {
   const c={sheet:Number($("productSheet").value||0),name:$("productNameCol").value};
   const products=[...new Set(activeRows(c.sheet).map(r=>String(r[c.name]??"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"es"));
