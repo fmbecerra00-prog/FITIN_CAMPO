@@ -8,6 +8,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
 
 <style>
@@ -117,6 +118,19 @@ footer {text-align:center;color:var(--muted);padding:22px}
  .no-print {display:none!important}
  @page {size:A4 portrait;margin:15mm}
 }
+
+.sales-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+.sales-source-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin-top:10px}
+.sales-source{border:1px solid var(--border);border-radius:10px;padding:10px;background:var(--card)}
+.sales-source-head{display:flex;align-items:center;gap:8px;font-weight:700}
+.sales-source-head input{width:auto}
+.sales-source small{display:block;margin:4px 0}
+.sales-source input[type=number]{max-width:120px}
+.sales-allocation-card{border:1px solid var(--border);border-radius:12px;padding:12px;margin:12px 0;background:var(--card)}
+.sales-balance{font-weight:700;margin-top:8px}
+.sales-balance.ok{color:#26734d}.sales-balance.bad{color:#b42335}
+.sales-text-preview{max-height:160px;overflow:auto;white-space:pre-wrap;font-size:12px;background:var(--bg);padding:10px;border-radius:8px}
+
 </style>
 </head>
 <body>
@@ -328,6 +342,40 @@ footer {text-align:center;color:var(--muted);padding:22px}
       <p id="replenishmentStatus" class="status"></p>
     </div>
   </section>
+  <section id="ventasTab" class="hidden">
+    <div class="panel">
+      <h2>Registrar venta</h2>
+      <p class="muted">Subí el PDF de la factura. FITIN CAMPO intentará leer sus datos y productos; revisá y corregí los campos antes de registrar la venta.</p>
+      <div class="sales-grid">
+        <div><label for="salesInvoicePdf">Factura en PDF</label><input id="salesInvoicePdf" type="file" accept="application/pdf,.pdf"><small>Se conserva en un almacenamiento privado de Supabase.</small></div>
+        <div><label for="salesClient">Cliente</label><input id="salesClient" placeholder="Cliente de la factura"></div>
+        <div><label for="salesInvoiceDate">Fecha de factura</label><input id="salesInvoiceDate" type="date"></div>
+        <div><label for="salesDeliveryDate">Fecha de entrega del pedido</label><input id="salesDeliveryDate" type="date"></div>
+      </div>
+      <p id="salesPdfStatus" class="status" aria-live="polite"></p>
+      <details><summary>Texto leído del PDF (para revisar)</summary><div id="salesPdfText" class="sales-text-preview">Todavía no se cargó una factura.</div></details>
+    </div>
+    <div class="panel">
+      <h2>Productos vendidos y demanda</h2>
+      <p class="muted">Verificá descripción, código, cantidad y precio unitario. El total de cada línea se calcula automáticamente.</p>
+      <div class="toolbar"><button id="salesAddLine" class="secondary" type="button">Agregar producto</button></div>
+      <div id="salesLines" class="table-wrap"></div>
+    </div>
+    <div class="panel">
+      <h2>Asignación del stock para esta venta</h2>
+      <p class="muted">Para cada producto se muestran las existencias disponibles por origen. Podés combinar varios orígenes. Los embarques pendientes solo se ofrecen si su fecha estimada de ingreso es igual o anterior a la fecha de entrega.</p>
+      <div id="salesAllocations"></div>
+      <p id="salesAllocationStatus" class="status" aria-live="polite"></p>
+      <div class="toolbar"><button id="salesRegisterBtn" type="button">Registrar venta y descontar stock</button></div>
+      <p id="salesStatus" class="status" aria-live="polite"></p>
+    </div>
+    <div class="panel">
+      <h2>Registro de ventas</h2>
+      <p class="muted">Cada registro conserva número, fecha y hora de carga, factura, cliente, fecha de entrega, detalle de productos, precios y distribución de stock.</p>
+      <div id="salesTable" class="table-wrap"></div>
+    </div>
+  </section>
+
   <section id="stockTab" class="hidden">
     <div id="stockPrintArea">
       <div id="stockPrintHeader">
@@ -489,7 +537,7 @@ const $ = id => document.getElementById(id);
 const PUBLIC_MODE = new URLSearchParams(window.location.search).get("public") === "1";
 // La interfaz de diseño queda reservada a la cuenta administradora. La seguridad real también se aplica con RLS en Supabase.
 const ADMIN_EMAIL = "fmbecerra00@gmail.com";
-function isAdminUser() { return !!currentUser && String(currentUser.email || "").toLowerCase() === ADMIN_EMAIL; }
+function isAdminUser() { return !!currentUser && String(currentUser.email || "").trim().toLowerCase() === ADMIN_EMAIL.trim().toLowerCase(); }
 
 const DEFAULT_DESIGN = {
   title:"FITIN CAMPO",subtitle:"Gestión de productos y stock",
@@ -510,6 +558,11 @@ let currentUser = null;
 let busy = false;
 let activeTab = "dashboard";
 let book = makeDefaultBook();
+let salesRecords = [];
+let salesStorageReady = false;
+let salesStorageError = "";
+let salesPdfFile = null;
+let salesDraftLines = [];
 
 function makeDefaultBook() {
   return {
@@ -525,6 +578,7 @@ function makeDefaultBook() {
     embarques:[],
     productosManuales:[],
     reposiciones:{},
+    ventasConsumos:[],
     consignacionCounter:0,
     pedidoCounter:0,
     embarqueCounter:0,
@@ -559,6 +613,7 @@ function numberValue(v) {
   if(s.includes(",")&&s.includes(".")) {
     s=s.lastIndexOf(",")>s.lastIndexOf(".")?s.replace(/\./g,"").replace(",","."):s.replace(/,/g,"");
   } else if(s.includes(",")) s=s.replace(",",".");
+  else if(/^\d{1,3}(?:\.\d{3})+$/.test(s)) s=s.replace(/\./g,"");
   const n=Number(s);
   return Number.isFinite(n)?n:0;
 }
@@ -651,12 +706,8 @@ async function loadBook() {
 
   if(error) throw new Error("Error al cargar datos: "+error.message);
 
-  if(!data || !data.data) {
-    book=makeDefaultBook();
-    return;
-  }
-
-  const saved=data.data;
+  const saved=(data && data.data) ? data.data : {};
+  if(!data || !data.data) book=makeDefaultBook();
   const defaults=makeDefaultBook();
 
   const loadedSheets=Array.isArray(saved.sheets)&&saved.sheets.length?saved.sheets:defaults.sheets;
@@ -694,6 +745,7 @@ async function loadBook() {
     embarques:Array.isArray(saved.embarques)?saved.embarques:[],
     productosManuales:Array.isArray(saved.productosManuales)?saved.productosManuales:[],
     reposiciones:saved.reposiciones&&typeof saved.reposiciones==="object"?saved.reposiciones:{},
+    ventasConsumos:Array.isArray(saved.ventasConsumos)?saved.ventasConsumos:[],
     consignacionCounter:Number(saved.consignacionCounter)||0, pedidoCounter:Number(saved.pedidoCounter)||0, embarqueCounter:Number(saved.embarqueCounter)||0,
     requestCounter:Number(saved.requestCounter)||0,
     countConfig:saved.countConfig||defaults.countConfig,
@@ -708,6 +760,12 @@ async function loadBook() {
   const savedDesign=designRow?.data || {};
   book.design={...DEFAULT_DESIGN,...savedDesign,logos:Array.isArray(savedDesign.logos)?savedDesign.logos:[],columnWidths:{...(savedDesign.columnWidths||{})}};
   book.active=Math.min(Math.max(0,Number(book.active)||0),book.sheets.length-1);
+  salesRecords=[]; salesStorageReady=false; salesStorageError="";
+  if(currentUser && !PUBLIC_MODE){
+    const salesResult=await sb.from("ventas").select("numero,id,payload,pdf_path,created_at,created_by").order("numero",{ascending:false});
+    if(salesResult.error){salesStorageError=salesResult.error.message;}
+    else {salesRecords=(salesResult.data||[]).map(r=>({...((r.payload&&typeof r.payload==="object")?r.payload:{}),id:r.id,number:r.payload?.number||("VEN-"+String(r.numero).padStart(5,"0")),pdfPath:r.pdf_path,createdAt:r.created_at,createdBy:r.created_by,dbNumber:r.numero}));salesStorageReady=true;}
+  }
 }
 
 function availabilityDateLabel() {
@@ -761,6 +819,7 @@ async function startApp() {
     populateDesign();
     applyDesign();
     renderAll();
+    salesDraftLines=[salesNewLine()];renderSalesLines();renderSalesAllocations();renderSalesTable();
     renderTabTitleEditor();
     renderWidgetEditor();
     renderColumnWidthTargets();renderColumnWidthEditor();
@@ -822,6 +881,7 @@ function allTabs() {
     {id:"embarques",label:"Embarques"},
     {id:"trazabilidad",label:"Trazabilidad"},
     {id:"reposiciones",label:"Reposiciones"},
+    ...(!PUBLIC_MODE ? [{id:"ventas",label:"Ventas"}] : []),
     ...book.customTabs,
     ...(isAdminUser() ? [{id:"design",label:book.tabLabels.design||"Diseño de página"}] : [])
   ];
@@ -837,12 +897,12 @@ function renderTabs() {
   });
 }
 function showTab(id) {
-  if((PUBLIC_MODE && (id==="design" || id==="stock")) || (id==="design" && !isAdminUser())) return;
+  if((PUBLIC_MODE && (id==="design" || id==="stock" || id==="ventas")) || (id==="design" && !isAdminUser())) return;
   activeTab=id;
   document.body.classList.toggle("records-active",id==="records");
-  ["dashboardTab","recordsTab","stockTab","solicitudTab","consignacionTab","pedidosTab","embarquesTab","trazabilidadTab","reposicionesTab","designTab","customTab"].forEach(x=>$(x).classList.add("hidden"));
+  ["dashboardTab","recordsTab","stockTab","solicitudTab","consignacionTab","pedidosTab","embarquesTab","trazabilidadTab","reposicionesTab","ventasTab","designTab","customTab"].forEach(x=>$(x).classList.add("hidden"));
 
-  if(["dashboard","records","stock","solicitud","consignacion","pedidos","embarques","trazabilidad","reposiciones","design"].includes(id)) {
+  if(["dashboard","records","stock","solicitud","consignacion","pedidos","embarques","trazabilidad","reposiciones","ventas","design"].includes(id)) {
     $(id+"Tab").classList.remove("hidden");
   } else {
     $("customTab").classList.remove("hidden");
@@ -863,6 +923,7 @@ function showTab(id) {
   if(id==="embarques") {renderEntryLines("shipment");renderEntryTable("shipment");renderShipmentCards();}
   if(id==="trazabilidad") renderTraceability();
   if(id==="reposiciones") renderReplenishmentConfig();
+  if(id==="ventas") {renderSalesLines();renderSalesAllocations();renderSalesTable();}
   if(id==="design") {renderTabTitleEditor();renderWidgetEditor();renderColumnWidthTargets();renderColumnWidthEditor();renderLogoEditor();renderLogos();}
 }
 
@@ -1192,7 +1253,7 @@ function inventoryRows() {
   const ensure=(name,code='')=>{
     name=String(name??'').trim(); code=String(code??'').trim(); if(!name)return null;
     const key=productKey(name,code);
-    if(!grouped.has(key)) grouped.set(key,{key,name,code,trenque:0,consignacion:0,fabricacion:0,legacyEmbarques:0,shipmentValues:{},embarques:0});
+    if(!grouped.has(key)) grouped.set(key,{key,name,code,trenque:0,consignacion:0,fabricacion:0,legacyEmbarques:0,shipmentValues:{},embarques:0,demanda:0});
     const item=grouped.get(key); if(!item.code&&code)item.code=code; return item;
   };
   activeRows(c.sheet).forEach(r=>{
@@ -1235,6 +1296,19 @@ function inventoryRows() {
     const item=findItem(line); if(!item)return; const qty=numberValue(line.quantity);
     const col=shipmentColumns[i]; item.shipmentValues[col.key]=(item.shipmentValues[col.key]||0)+qty;
   }));
+  // Las ventas consumen el origen elegido y alimentan la columna Demanda.
+  (book.ventasConsumos||[]).forEach(move=>{
+    const item=findItem({product:move.product,code:move.code}); if(!item)return;
+    const qty=numberValue(move.quantity); item.demanda+=qty;
+    if(move.sourceType==='trenque') item.trenque-=qty;
+    else if(move.sourceType==='consignacion') item.consignacion-=qty;
+    else if(move.sourceType==='fabricacion') item.fabricacion-=qty;
+    else if(move.sourceType==='shipment'){
+      const rec=shipmentRecords.find(x=>String(x.id)===String(move.sourceId));
+      if(rec&&(rec.receivedAt||rec.received)) item.trenque-=qty;
+      else {const col=shipmentColumns.find(x=>String(x.id)===String(move.sourceId));if(col)item.shipmentValues[col.key]=Math.max(0,numberValue(item.shipmentValues[col.key])-qty);}
+    }
+  });
   grouped.forEach(item=>{item.embarques=item.legacyEmbarques+Object.values(item.shipmentValues).reduce((a,b)=>a+b,0);});
   const rows=[...grouped.values()].sort((a,b)=>a.name.localeCompare(b.name,'es')||a.code.localeCompare(b.code,'es'));
   rows.shipmentColumns=shipmentColumns;
@@ -1248,7 +1322,7 @@ function renderInventory() {
     ["Total de productos ofrecidos",rows.length,"Productos únicos según nombre y código"],
     ["Stock total consolidado",total,"Trenque Lauquen + Consignación + En fabricación + embarques"]
   ].map(([a,b,c])=>`<div class="stat"><span class="muted">${esc(a)}</span><strong>${esc(b)}</strong><small>${esc(c)}</small></div>`).join("");
-  const headers=["Producto","Código","Stock total","Trenque Lauquen","Consignación","En fabricación"];
+  const headers=["Producto","Código","Stock total","Demanda","Trenque Lauquen","Consignación","En fabricación"];
   if(rows.some(r=>r.legacyEmbarques!==0)) headers.push("Embarques existentes");
   shipmentColumns.forEach(col=>headers.push(col.label));
   if(!shipmentColumns.length&&!rows.some(r=>r.legacyEmbarques!==0)) headers.push("Embarques");
@@ -1256,7 +1330,7 @@ function renderInventory() {
     const shipmentTotal=Object.values(r.shipmentValues||{}).reduce((a,b)=>a+b,0);
     const legacy=(headers.includes("Embarques existentes")?r.legacyEmbarques:0);
     const totalRow=r.trenque+r.consignacion+r.fabricacion+legacy+shipmentTotal;
-    const cells=[`<td>${esc(r.name)}</td>`,`<td>${esc(r.code||"—")}</td>`,`<td><strong>${totalRow}</strong></td>`,`<td>${r.trenque}</td>`,`<td>${r.consignacion}</td>`,`<td>${r.fabricacion}</td>`];
+    const cells=[`<td>${esc(r.name)}</td>`,`<td>${esc(r.code||"—")}</td>`,`<td><strong>${totalRow}</strong></td>`,`<td><strong>${r.demanda||0}</strong></td>`,`<td>${r.trenque}</td>`,`<td>${r.consignacion}</td>`,`<td>${r.fabricacion}</td>`];
     if(headers.includes("Embarques existentes"))cells.push(`<td>${r.legacyEmbarques}</td>`);
     shipmentColumns.forEach(col=>cells.push(`<td>${numberValue(r.shipmentValues?.[col.key]||0)}</td>`));
     if(!shipmentColumns.length&&!headers.includes("Embarques existentes"))cells.push('<td>0</td>');
@@ -1271,9 +1345,11 @@ function renderInventory() {
 }
 
 function traceDataForProduct(row){
- const cons=(book.consignaciones||[]).flatMap(rec=>(rec.lines||[]).filter(l=>norm(l.code||'')===norm(row.code||'') || (!row.code&&norm(l.product)===norm(row.name))).map(l=>({client:rec.client||'Cliente sin identificar',number:rec.number||'',quantity:numberValue(l.quantity),date:rec.date||''})));
- const fabrication=(book.pedidosFabricacion||[]).flatMap(rec=>(rec.lines||[]).filter(l=>norm(l.code||'')===norm(row.code||'') || (!row.code&&norm(l.product)===norm(row.name))).map(l=>({number:rec.number||'',quantity:numberValue(l.quantity),date:rec.date||''})));
- const shipments=(book.embarques||[]).flatMap(rec=>(rec.lines||[]).filter(l=>norm(l.code||'')===norm(row.code||'') || (!row.code&&norm(l.product)===norm(row.name))).map(l=>({number:rec.number||rec.label||'Embarque',quantity:numberValue(l.quantity),received:!!(rec.receivedAt||rec.received),date:rec.date||rec.estimatedDate||''})));
+ const matches=l=>(norm(l.code||'')===norm(row.code||'') || (!row.code&&norm(l.product)===norm(row.name)));
+ const used=(type,id)=> (book.ventasConsumos||[]).filter(m=>m.sourceType===type&&String(m.sourceId||'')===String(id||'')&&((row.code&&norm(m.code)===norm(row.code))||(!row.code&&norm(m.product)===norm(row.name)))).reduce((a,m)=>a+numberValue(m.quantity),0);
+ const cons=(book.consignaciones||[]).flatMap(rec=>(rec.lines||[]).filter(matches).map(l=>({client:rec.client||'Cliente sin identificar',number:rec.number||'',quantity:Math.max(0,numberValue(l.quantity)-used('consignacion',rec.id)),date:rec.date||''}))).filter(x=>x.quantity>0);
+ const fabrication=(book.pedidosFabricacion||[]).flatMap(rec=>(rec.lines||[]).filter(matches).map(l=>({number:rec.number||'',quantity:Math.max(0,numberValue(l.quantity)-used('fabricacion',rec.id)),date:rec.date||''}))).filter(x=>x.quantity>0);
+ const shipments=(book.embarques||[]).flatMap(rec=>(rec.lines||[]).filter(matches).map(l=>({number:rec.number||rec.label||'Embarque',quantity:Math.max(0,numberValue(l.quantity)-used('shipment',rec.id)),received:!!(rec.receivedAt||rec.received),date:rec.date||rec.estimatedDate||''})));
  return {cons,fabrication,shipments};
 }
 function renderTraceability(){
@@ -1286,7 +1362,7 @@ function renderTraceability(){
  const d=traceDataForProduct(chosen);
  const list=(items,fmt)=>items.length?'<ul>'+items.map(fmt).join('')+'</ul>':'<p class="muted">Sin registros.</p>';
  box.innerHTML=`
- <div class="stat"><span class="muted">Stock en Trenque Lauquen</span><strong>${chosen.trenque}</strong></div>
+ <div class="stat"><span class="muted">Demanda acumulada (unidades vendidas)</span><strong>${chosen.demanda||0}</strong></div><div class="stat"><span class="muted">Stock en Trenque Lauquen</span><strong>${chosen.trenque}</strong></div>
  <div class="stat"><span class="muted">Stock en consignación</span><strong>${chosen.consignacion}</strong>${list(d.cons,x=>`<li>${esc(x.client)} · ${esc(x.quantity)} unidades ${x.number?'('+esc(x.number)+')':''}</li>`)}</div>
  <div class="stat"><span class="muted">Stock en fabricación</span><strong>${chosen.fabricacion}</strong>${list(d.fabrication,x=>`<li>${esc(x.number)} · ${esc(x.quantity)} unidades</li>`)}</div>
  <div class="stat"><span class="muted">Stock por embarque</span>${list(d.shipments,x=>`<li>${esc(x.number)} · ${esc(x.quantity)} unidades · ${x.received?'Recibido':'Pendiente'}</li>`)}</div>`;
@@ -1310,7 +1386,7 @@ function renderReplenishmentConfig(){
  const box=$('replenishmentConfigTable');if(!box)return;
  const rows=inventoryRows();
  if(!rows.length){box.innerHTML='<p class="muted">No hay productos en el inventario para configurar.</p>';return;}
- const canEdit=isAdminUser();
+ const canEdit=!!currentUser;
  box.innerHTML='<table><thead><tr><th>Producto</th><th>Código</th><th>Mínimo Trenque Lauquen</th><th>Mínimo en embarques pendientes</th><th>Mínimo en fabricación</th><th>Mínimo en consignación</th></tr></thead><tbody>'+rows.map(r=>{const t=replenishmentThreshold(r);return `<tr><td>${esc(r.name)}</td><td>${esc(r.code||'—')}</td>${[['trenque','Trenque'],['embarques','Embarques'],['fabricacion','Fabricación'],['consignacion','Consignación']].map(([k])=>`<td><input type="number" min="0" step="1" data-replenish="${esc(r.key)}:${k}" value="${Number(t[k]||0)}" ${canEdit?'':'disabled'} style="width:110px"></td>`).join('')}</tr>`;}).join('')+'</tbody></table>';
  $('saveReplenishmentConfig').style.display=canEdit?'':'none';
 }
@@ -1321,6 +1397,166 @@ $('saveReplenishmentConfig')?.addEventListener('click',async()=>{
  try{await saveBook();renderReplenishmentConfig();renderTraceability();message('replenishmentStatus','Parámetros guardados correctamente.');}
  catch(e){book.reposiciones=previous;message('replenishmentStatus','No se pudieron guardar los parámetros: '+e.message,true);}
 });
+
+/* VENTAS: lectura de factura, asignación de stock por origen y registro protegido */
+const SALES_BUCKET='ventas-facturas';
+const salesUid=()=>uid();
+function salesProductRows(){return inventoryRows();}
+function salesFindProduct(line){
+ const rows=salesProductRows();
+ return rows.find(r=>line.code&&norm(r.code)===norm(line.code))||rows.find(r=>line.product&&norm(r.name)===norm(line.product));
+}
+function salesNewLine(data={}){return {id:salesUid(),product:data.product||'',code:data.code||'',quantity:Math.max(1,Number(data.quantity)||1),unitPrice:Math.max(0,numberValue(data.unitPrice)),allocations:[]};}
+function salesMoney(v){return Number(v||0).toLocaleString('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:2});}
+function salesDateISO(raw){
+ if(!raw)return '';
+ const m=String(raw).match(/(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})/);
+ if(m){let y=Number(m[3]);if(y<100)y+=2000;return `${y}-${String(Number(m[2])).padStart(2,'0')}-${String(Number(m[1])).padStart(2,'0')}`;}
+ const iso=String(raw).match(/(\d{4})-(\d{2})-(\d{2})/);return iso?iso[0]:'';
+}
+function salesParseInvoiceText(raw){
+ const text=String(raw||'');
+ const clientMatch=text.match(/(?:cliente|raz[oó]n\s+social|señores|facturar\s+a)\s*[:\-]?\s*([^\n\r]{3,90})/i);
+ const deliveryMatch=text.match(/(?:fecha\s+de\s+entrega|entrega\s+prevista|entregar\s+el)\s*[:\-]?\s*(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}|\d{4}-\d{2}-\d{2})/i);
+ const invoiceMatch=text.match(/(?:fecha\s+(?:de\s+)?(?:factura|emisi[oó]n|venta)|emitida\s+el)\s*[:\-]?\s*(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}|\d{4}-\d{2}-\d{2})/i);
+ const catalog=salesProductRows();const parsed=[];const used=new Set();
+ const lines=text.split(/\r?\n/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
+ for(const ln of lines){
+   const row=ln.match(/^([A-Z0-9][A-Z0-9-]{1,})\s+(.+?)\s+([\d.,]+)\s+(\d+(?:[.,]\d+)?)$/i);
+   if(row){
+     const code=row[1].trim(),desc=row[2].trim(),price=numberValue(row[3]),qty=numberValue(row[4]);
+     const match=catalog.find(p=>p.code&&norm(p.code)===norm(code))||catalog.find(p=>norm(p.name)===norm(desc));
+     parsed.push(salesNewLine({product:match?.name||desc,code:match?.code||code,quantity:qty,unitPrice:price}));used.add(ln);continue;
+   }
+   const alt=ln.match(/^(.+?)\s+(\d+(?:[.,]\d+)?)\s+\$?\s*([\d.,]+)\s+\$?\s*([\d.,]+)$/);
+   if(alt&&!used.has(ln)){
+     const desc=alt[1].trim();const match=catalog.find(p=>norm(p.name)===norm(desc)||norm(desc).includes(norm(p.name)));
+     parsed.push(salesNewLine({product:match?.name||desc,code:match?.code||'',quantity:numberValue(alt[2]),unitPrice:numberValue(alt[3])}));used.add(ln);
+   }
+ }
+ return {client:clientMatch?.[1]?.split(/\s{2,}/)[0]?.trim()||'',invoiceDate:salesDateISO(invoiceMatch?.[1]||''),deliveryDate:salesDateISO(deliveryMatch?.[1]||''),lines:parsed};
+}
+async function readSalesPdf(file){
+ salesPdfFile=file;$('salesPdfStatus').textContent='Leyendo el PDF…';$('salesPdfText').textContent='';
+ if(!window.pdfjsLib){$('salesPdfStatus').textContent='No se pudo cargar el lector PDF. Revisá la conexión y recargá la página.';return;}
+ try{
+  pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const bytes=await file.arrayBuffer();const pdf=await pdfjsLib.getDocument({data:bytes}).promise;let full='';
+  for(let n=1;n<=pdf.numPages;n++){
+   const page=await pdf.getPage(n);const content=await page.getTextContent();const rows=new Map();
+   content.items.forEach(item=>{const y=Math.round((item.transform?.[5]||0)/3)*3;if(!rows.has(y))rows.set(y,[]);rows.get(y).push({x:item.transform?.[4]||0,text:item.str||''});});
+   full+=[...rows.entries()].sort((a,b)=>b[0]-a[0]).map(([,parts])=>parts.sort((a,b)=>a.x-b.x).map(x=>x.text).join(' ')).join('\n')+'\n';
+  }
+  $('salesPdfText').textContent=full||'El PDF no contiene texto seleccionable. Si es un escaneo, el lector no puede extraerlo automáticamente.';
+  const parsed=salesParseInvoiceText(full);
+  if(parsed.client&&!$('salesClient').value)$('salesClient').value=parsed.client;
+  if(parsed.invoiceDate&&!$('salesInvoiceDate').value)$('salesInvoiceDate').value=parsed.invoiceDate;
+  if(parsed.deliveryDate&&!$('salesDeliveryDate').value)$('salesDeliveryDate').value=parsed.deliveryDate;
+  if(parsed.lines.length)salesDraftLines=parsed.lines;
+  else if(!salesDraftLines.length)salesDraftLines=[salesNewLine()];
+  renderSalesLines();renderSalesAllocations();
+  $('salesPdfStatus').textContent=parsed.lines.length?`PDF leído: ${pdf.numPages} página(s). Se detectaron ${parsed.lines.length} línea(s) de producto; revisá los datos.`:`PDF leído (${pdf.numPages} página(s)), pero no se identificaron productos con seguridad. Cargalos o corregilos manualmente; el texto extraído queda disponible para revisar.`;
+ }catch(e){$('salesPdfStatus').textContent='No se pudo leer el PDF: '+(e?.message||e);}
+}
+function salesLedgerUsed(type,sourceId,line){return (book.ventasConsumos||[]).filter(m=>m.sourceType===type&&String(m.sourceId||'')===String(sourceId||'')&&((line.code&&norm(m.code)===norm(line.code))||(!line.code&&norm(m.product)===norm(line.product)))).reduce((a,m)=>a+numberValue(m.quantity),0);}
+function salesLineMatches(a,b){return (a.code&&b.code&&norm(a.code)===norm(b.code))||(!a.code&&!b.code&&norm(a.product)===norm(b.product));}
+function salesSourceOptions(line){
+ const row=salesFindProduct(line);if(!row)return [];
+ const delivery=$('salesDeliveryDate').value;const options=[];
+ options.push({key:'trenque:',sourceType:'trenque',sourceId:'',label:'Stock Trenque Lauquen',dateLabel:'Disponible actualmente',available:Math.max(0,row.trenque)});
+ let consRecNet=0;
+ (book.consignaciones||[]).forEach(rec=>(rec.lines||[]).filter(l=>salesLineMatches(line,l)).forEach(l=>{const qty=Math.max(0,numberValue(l.quantity)-salesLedgerUsed('consignacion',rec.id,line));consRecNet+=qty;if(qty>0)options.push({key:'consignacion:'+rec.id,sourceType:'consignacion',sourceId:rec.id,label:'Consignación · '+(rec.client||'Cliente sin identificar')+' · '+(rec.number||''),dateLabel:rec.date?'Fecha: '+formatDateOnly(rec.date):'Fecha no informada',available:qty});}));
+ const legacyCons=Math.max(0,row.consignacion-consRecNet);options.push({key:'consignacion_legacy:',sourceType:'consignacion',sourceId:'legacy',label:'Consignación · saldo importado sin cliente',dateLabel:'Sin detalle de cliente',available:legacyCons});
+ let fabRecNet=0;
+ (book.pedidosFabricacion||[]).forEach(rec=>(rec.lines||[]).filter(l=>salesLineMatches(line,l)).forEach(l=>{const qty=Math.max(0,numberValue(l.quantity)-salesLedgerUsed('fabricacion',rec.id,line));fabRecNet+=qty;if(qty>0)options.push({key:'fabricacion:'+rec.id,sourceType:'fabricacion',sourceId:rec.id,label:'En fabricación · '+(rec.client||'Sin cliente')+' · '+(rec.number||''),dateLabel:rec.date?'Fecha registrada: '+formatDateOnly(rec.date):'Sin fecha informada',available:qty});}));
+ const legacyFab=Math.max(0,row.fabricacion-fabRecNet);options.push({key:'fabricacion_legacy:',sourceType:'fabricacion',sourceId:'legacy',label:'Fabricación · saldo importado',dateLabel:'Sin detalle de orden',available:legacyFab});
+ let shipmentOptions=0;
+ (book.embarques||[]).filter(rec=>!(rec.receivedAt||rec.received)).forEach(rec=>{
+   const eta=rec.date||rec.estimatedDate||'';const eligible=!!delivery&&!!eta&&eta<=delivery;
+   (rec.lines||[]).filter(l=>salesLineMatches(line,l)).forEach(l=>{const qty=Math.max(0,numberValue(l.quantity)-salesLedgerUsed('shipment',rec.id,line));shipmentOptions++;options.push({key:'shipment:'+rec.id,sourceType:'shipment',sourceId:rec.id,label:'Embarque · '+(rec.label||rec.number||'Sin referencia'),dateLabel:eta?'Ingreso estimado: '+formatDateOnly(eta):'Fecha de ingreso no informada',available:qty,eligible,dateWarning:!delivery?'Completá la fecha de entrega para evaluar este embarque':!eta?'No se puede confirmar si llega a tiempo':eligible?'Llega antes de la entrega':'No llega antes de la fecha de entrega'});});
+ });
+ if(!shipmentOptions)options.push({key:'shipment:none',sourceType:'shipment',sourceId:'',label:'Embarques provenientes',dateLabel:'No hay embarques pendientes para este producto',available:0,eligible:false,dateWarning:'Sin disponibilidad'});
+ return options;
+}
+function salesSelectedForSource(sourceKey,excludeLineId){return salesDraftLines.filter(l=>l.id!==excludeLineId).reduce((sum,l)=>sum+(l.allocations||[]).filter(a=>a.key===sourceKey).reduce((x,a)=>x+numberValue(a.quantity),0),0);}
+function renderSalesLines(){
+ const box=$('salesLines');if(!box)return;
+ if(!salesDraftLines.length)salesDraftLines=[salesNewLine()];
+ box.innerHTML='<table class="request-lines"><thead><tr><th>Producto vendido</th><th>Código</th><th>Cantidad / Demanda</th><th>Precio unitario</th><th>Total</th><th></th></tr></thead><tbody>'+salesDraftLines.map(l=>`<tr><td><input data-sales-product="${l.id}" value="${esc(l.product)}" placeholder="Descripción del producto"></td><td><input data-sales-code="${l.id}" value="${esc(l.code)}" placeholder="Código"></td><td><input type="number" min="1" step="1" data-sales-qty="${l.id}" value="${l.quantity}"></td><td><input type="number" min="0" step="0.01" data-sales-price="${l.id}" value="${l.unitPrice}"></td><td><strong>${salesMoney(l.quantity*l.unitPrice)}</strong></td><td><button type="button" class="danger" data-sales-remove="${l.id}">Quitar</button></td></tr>`).join('')+'</tbody></table>';
+ box.querySelectorAll('[data-sales-product]').forEach(el=>el.onchange=()=>{const l=salesDraftLines.find(x=>x.id===el.dataset.salesProduct);l.product=el.value.trim();const match=salesFindProduct(l);if(match){l.product=match.name;l.code=match.code||l.code;}l.allocations=[];renderSalesLines();renderSalesAllocations();});
+ box.querySelectorAll('[data-sales-code]').forEach(el=>el.onchange=()=>{const l=salesDraftLines.find(x=>x.id===el.dataset.salesCode);l.code=el.value.trim();const match=salesFindProduct(l);if(match){l.product=match.name;l.code=match.code||l.code;}l.allocations=[];renderSalesLines();renderSalesAllocations();});
+ box.querySelectorAll('[data-sales-qty]').forEach(el=>el.onchange=()=>{const l=salesDraftLines.find(x=>x.id===el.dataset.salesQty);l.quantity=Math.max(1,Math.floor(Number(el.value)||1));renderSalesLines();renderSalesAllocations();});
+ box.querySelectorAll('[data-sales-price]').forEach(el=>el.onchange=()=>{const l=salesDraftLines.find(x=>x.id===el.dataset.salesPrice);l.unitPrice=Math.max(0,numberValue(el.value));renderSalesLines();});
+ box.querySelectorAll('[data-sales-remove]').forEach(el=>el.onclick=()=>{salesDraftLines=salesDraftLines.filter(x=>x.id!==el.dataset.salesRemove);renderSalesLines();renderSalesAllocations();});
+}
+function renderSalesAllocations(){
+ const box=$('salesAllocations');if(!box)return;
+ if(!salesDraftLines.length){box.innerHTML='<p class="muted">Agregá los productos de la factura.</p>';return;}
+ let complete=true;const cards=salesDraftLines.map(line=>{
+  const row=salesFindProduct(line);const options=salesSourceOptions(line);let chosen=0;
+  const optionHtml=options.map(o=>{const usedByOther=salesSelectedForSource(o.key,line.id);const available=Math.max(0,o.available-usedByOther);const current=(line.allocations||[]).find(a=>a.key===o.key);const qty=numberValue(current?.quantity);chosen+=qty;if(qty>available||(qty>0&&o.eligible===false))complete=false;
+   return `<div class="sales-source"><div class="sales-source-head"><input type="checkbox" data-sales-source-check="${line.id}|${esc(o.key)}" ${qty>0?'checked':''} ${(o.eligible===false||available<=0)&&qty===0?'disabled':''}><span>${esc(o.label)}</span></div><small>${esc(o.dateLabel)} · Disponible: <strong>${available}</strong>${o.dateWarning?' · <strong>'+esc(o.dateWarning)+'</strong>':''}</small><label>Cantidad a consumir</label><input type="number" min="0" max="${available}" step="1" data-sales-source-qty="${line.id}|${esc(o.key)}" value="${qty}" ${qty>0&&o.eligible!==false?'':'disabled'}></div>`;
+  }).join('');
+  const invalidChosen=(line.allocations||[]).filter(a=>{const o=options.find(x=>x.key===a.key);return !o||o.eligible===false;}).reduce((n,a)=>n+numberValue(a.quantity),0);const remaining=line.quantity-(chosen-invalidChosen);if(remaining!==0)complete=false;
+  return `<div class="sales-allocation-card"><strong>${esc(line.product||'Producto sin identificar')}${line.code?' · '+esc(line.code):''}</strong><div>Demanda de esta venta: <strong>${line.quantity}</strong> unidades</div>${!row?'<p class="status error">No coincide con un producto del inventario. Corregí la descripción o el código para asignar stock.</p>':''}<div class="sales-source-grid">${optionHtml||'<p class="muted">No hay stock disponible para este producto en los orígenes compatibles con la fecha de entrega.</p>'}</div><div class="sales-balance ${remaining===0?'ok':'bad'}">${remaining===0?'Demanda completamente cubierta.':remaining>0?'Faltan asignar '+remaining+' unidad(es) válidas.':'Hay '+Math.abs(remaining)+' unidad(es) asignadas de más.'}${invalidChosen>0?' · Hay '+invalidChosen+' unidad(es) asignadas a un embarque que no llega a tiempo.':''}</div></div>`;
+ }).join('');
+ box.innerHTML=cards;
+ box.querySelectorAll('[data-sales-source-check]').forEach(el=>el.onchange=()=>{const [lineId,key]=el.dataset.salesSourceCheck.split('|');const line=salesDraftLines.find(x=>x.id===lineId);line.allocations=line.allocations||[];const opt=salesSourceOptions(line).find(x=>x.key===key);const other=salesSelectedForSource(key,lineId);if(el.checked){if(!opt||opt.eligible===false||opt.available<=0){el.checked=false;return;}const available=Math.max(0,(opt?.available||0)-other);if(!available){el.checked=false;return;}line.allocations.push({key,sourceType:opt.sourceType,sourceId:opt.sourceId,quantity:Math.min(line.quantity,available)});}else line.allocations=line.allocations.filter(a=>a.key!==key);renderSalesAllocations();});
+ box.querySelectorAll('[data-sales-source-qty]').forEach(el=>el.onchange=()=>{const [lineId,key]=el.dataset.salesSourceQty.split('|');const line=salesDraftLines.find(x=>x.id===lineId);const a=line.allocations.find(x=>x.key===key);if(!a)return;const opt=salesSourceOptions(line).find(x=>x.key===key);if(!opt||opt.eligible===false){return;}const max=Math.max(0,(opt?.available||0)-salesSelectedForSource(key,lineId));a.quantity=Math.max(0,Math.min(Math.floor(Number(el.value)||0),max));if(a.quantity===0)line.allocations=line.allocations.filter(x=>x!==a);renderSalesAllocations();});
+ $('salesAllocationStatus').textContent=complete?'Todas las cantidades están cubiertas por stock disponible.':'La venta solo se podrá registrar cuando la suma asignada cubra exactamente la demanda de cada producto.';
+}
+function renderSalesTable(){
+ const box=$('salesTable');if(!box)return;
+ if(!salesStorageReady){box.innerHTML=`<p class="status error">${salesStorageError?'No se pudo acceder al registro de ventas: '+esc(salesStorageError):'Falta configurar la tabla privada de ventas y el almacenamiento de facturas en Supabase.'}</p><p class="muted">Ejecutá el archivo SQL de configuración incluido con esta actualización y luego recargá FITIN CAMPO.</p>`;return;}
+ if(!salesRecords.length){box.innerHTML='<p class="muted">Todavía no hay ventas registradas.</p>';return;}
+ box.innerHTML='<table><thead><tr><th>N.º de registro</th><th>Fecha y hora de registro</th><th>Cliente</th><th>Fecha de factura</th><th>Fecha de entrega</th><th>Productos / demanda / precio</th><th>Total</th><th>Factura</th></tr></thead><tbody>'+salesRecords.map(r=>`<tr><td><strong>${esc(r.number)}</strong></td><td>${esc(formatRequestDate(r.createdAt))}</td><td>${esc(r.client||'—')}</td><td>${esc(formatDateOnly(r.invoiceDate))}</td><td>${esc(formatDateOnly(r.deliveryDate))}</td><td>${(r.items||[]).map(i=>`${esc(i.product)} (${esc(i.code||'—')}) · Demanda: ${esc(i.quantity)} u. × ${salesMoney(i.unitPrice)} = ${salesMoney(numberValue(i.quantity)*numberValue(i.unitPrice))}`).join('<br>')}</td><td>${salesMoney((r.items||[]).reduce((a,i)=>a+numberValue(i.quantity)*numberValue(i.unitPrice),0))}</td><td><button type="button" class="secondary" data-sales-pdf="${esc(r.id)}">Ver PDF</button></td></tr>`).join('')+'</tbody></table>';
+ box.querySelectorAll('[data-sales-pdf]').forEach(btn=>btn.onclick=async()=>{const rec=salesRecords.find(x=>x.id===btn.dataset.salesPdf);if(!rec?.pdfPath)return;btn.disabled=true;try{const {data,error}=await sb.storage.from(SALES_BUCKET).createSignedUrl(rec.pdfPath,60);if(error)throw error;window.open(data.signedUrl,'_blank','noopener');}catch(e){alert('No se pudo abrir la factura: '+e.message);}finally{btn.disabled=false;}});
+}
+async function registerSale(){
+ if(!currentUser){$('salesStatus').textContent='Tenés que iniciar sesión para registrar ventas.';return;}
+ if(!salesStorageReady){$('salesStatus').textContent='Primero configurá la tabla y el almacenamiento privado de ventas en Supabase.';return;}
+ // Actualiza el libro antes de validar para no usar una disponibilidad antigua si otro usuario registró movimientos.
+ try{await loadBook();if(!salesStorageReady)throw new Error(salesStorageError||'No se pudo consultar el registro de ventas.');renderInventory();renderSalesAllocations();}catch(e){$('salesStatus').textContent='No se pudo actualizar el stock antes de registrar la venta: '+e.message;return;}
+ if(!salesPdfFile){$('salesStatus').textContent='Adjuntá el PDF de la factura.';return;}
+ const client=$('salesClient').value.trim(),invoiceDate=$('salesInvoiceDate').value,deliveryDate=$('salesDeliveryDate').value;
+ if(!client||!deliveryDate){$('salesStatus').textContent='Completá el cliente y la fecha de entrega.';return;}
+ if(!salesDraftLines.length||salesDraftLines.some(l=>!l.product||!l.code||!salesFindProduct(l)||!(Number(l.quantity)>0))){$('salesStatus').textContent='Cada línea debe tener un producto del inventario, código y cantidad válida.';return;}
+ for(const line of salesDraftLines){const sum=(line.allocations||[]).reduce((a,x)=>a+numberValue(x.quantity),0);if(sum!==Number(line.quantity)){$('salesStatus').textContent=`La asignación de ${line.product} debe cubrir exactamente ${line.quantity} unidades.`;return;}}
+ // Revalidar contra el saldo disponible antes de guardar, incluyendo otras líneas de esta misma factura.
+ for(const line of salesDraftLines){for(const a of line.allocations||[]){const opt=salesSourceOptions(line).find(o=>o.key===a.key);const max=Math.max(0,(opt?.available||0)-salesSelectedForSource(a.key,line.id));if(!opt||opt.eligible===false||numberValue(a.quantity)>max){$('salesStatus').textContent=`El origen ${a.key} ya no tiene saldo suficiente para ${line.product}. Actualizá los datos y volvé a asignar.`;return;}}}
+ const saleId=salesUid(),createdAt=new Date().toISOString();const items=salesDraftLines.map(l=>({product:l.product,code:l.code,quantity:Number(l.quantity),unitPrice:Number(l.unitPrice)||0,total:Number(l.quantity)*(Number(l.unitPrice)||0),allocations:(l.allocations||[]).map(a=>({...a}))}));
+ const payload={client,invoiceDate,deliveryDate,items,fileName:salesPdfFile.name,createdAt,createdBy:currentUser.email||'Usuario'};
+ const path=`${currentUser.id}/${saleId}.pdf`;$('salesRegisterBtn').disabled=true;$('salesStatus').textContent='Guardando factura y venta…';let uploaded=false,inserted=false,stockCommitted=false;
+ try{
+  const {error:uploadError}=await sb.storage.from(SALES_BUCKET).upload(path,salesPdfFile,{contentType:'application/pdf',upsert:false});if(uploadError)throw new Error('No se pudo guardar el PDF: '+uploadError.message);uploaded=true;
+  const {data:dbRow,error:insertError}=await sb.from('ventas').insert({id:saleId,payload,pdf_path:path,created_by:currentUser.id}).select('numero').single();if(insertError)throw new Error('No se pudo crear el registro de venta: '+insertError.message);inserted=true;
+  const number='VEN-'+String(dbRow.numero).padStart(5,'0');payload.number=number;
+  const {error:updateError}=await sb.from('ventas').update({payload}).eq('id',saleId);if(updateError)throw new Error('La venta se creó, pero no se pudo completar el número: '+updateError.message);
+  const moves=items.flatMap(item=>item.allocations.map(a=>({saleId,product:item.product,code:item.code,sourceType:a.sourceType,sourceId:a.sourceId||'',quantity:a.quantity,createdAt})));
+  book.ventasConsumos=[...(book.ventasConsumos||[]),...moves];
+  let stockSaveWarning='';
+  try{await saveBook();stockCommitted=true;}catch(e){
+    const {data:checkState}=await sb.from('app_state').select('data').eq('id',1).maybeSingle();
+    const savedMoves=checkState?.data?.ventasConsumos||[];
+    const persisted=savedMoves.some(m=>m.saleId===saleId);
+    if(!persisted){book.ventasConsumos=book.ventasConsumos.filter(m=>m.saleId!==saleId);throw new Error('No se pudo actualizar el stock general: '+e.message);}
+    stockCommitted=true;
+    stockSaveWarning=' El stock quedó actualizado; Supabase informó además: '+e.message;
+  }
+  salesRecords.unshift({...payload,id:saleId,pdfPath:path,createdAt,dbNumber:dbRow.numero});
+  salesDraftLines=[salesNewLine()];salesPdfFile=null;$('salesInvoicePdf').value='';$('salesClient').value='';$('salesInvoiceDate').value='';$('salesDeliveryDate').value='';$('salesPdfText').textContent='Todavía no se cargó una factura.';$('salesPdfStatus').textContent='';
+  renderSalesLines();renderSalesAllocations();renderSalesTable();renderInventory();
+  $('salesStatus').textContent=`Venta ${number} registrada. La demanda quedó asentada y el stock fue descontado según los orígenes elegidos.${stockSaveWarning}`;
+ }catch(e){
+  if(inserted&&!stockCommitted)await sb.from('ventas').delete().eq('id',saleId);
+  if(uploaded&&!stockCommitted)await sb.storage.from(SALES_BUCKET).remove([path]);
+  $('salesStatus').textContent=e.message||String(e);
+ }finally{$('salesRegisterBtn').disabled=false;}
+}
+$('salesInvoicePdf')?.addEventListener('change',e=>{const f=e.target.files?.[0];if(f){if(f.type!=='application/pdf'&&!f.name.toLowerCase().endsWith('.pdf')){$('salesPdfStatus').textContent='El archivo debe ser PDF.';return;}readSalesPdf(f);}});
+$('salesAddLine')?.addEventListener('click',()=>{salesDraftLines.push(salesNewLine());renderSalesLines();renderSalesAllocations();});
+$('salesDeliveryDate')?.addEventListener('change',renderSalesAllocations);
+$('salesRegisterBtn')?.addEventListener('click',registerSale);
 
 function renderAvailabilityOptions() {
   const c={sheet:Number($("productSheet").value||0),name:$("productNameCol").value};
@@ -1409,6 +1645,7 @@ function applyPublicMode() {
   const designTabButton=[...$("tabs").querySelectorAll('button')].find(b=>b.textContent===(book.tabLabels.design||'Diseño de página'));
   if(designTabButton) designTabButton.style.display='none';
   $("designTab").style.display="none";
+  if($("ventasTab")) $("ventasTab").style.display="none";
   $("stockTab").style.display="none";
   const stockTabButton=[...$("tabs").querySelectorAll("button")].find(b=>b.textContent===(book.tabLabels.stock||"Stock actual"));
   if(stockTabButton) stockTabButton.style.display="none";
@@ -1750,7 +1987,7 @@ function renderEntryTable(type){
    try{await saveBook();renderEntryTable('shipment');renderShipmentCards();renderInventory();}
    catch(e){Object.assign(rec,previous);if(previous.received===undefined)delete rec.received;if(previous.receivedAt===undefined)delete rec.receivedAt;if(previous.receivedBy===undefined)delete rec.receivedBy;alert('No se pudo actualizar el estado del embarque: '+e.message);renderEntryTable('shipment');}
  });
- box.querySelectorAll('[data-entry-delete]').forEach(btn=>btn.onclick=async()=>{const [t,id]=btn.dataset.entryDelete.split(':');const c=ENTRY_CONFIG[t];if(!confirm('¿Eliminar este registro?'))return;const prev=book[c.productsKey];book[c.productsKey]=prev.filter(r=>r.id!==id);try{await saveBook();renderEntryTable(t);if(t==='shipment')renderShipmentCards();renderInventory();}catch(e){book[c.productsKey]=prev;alert('No se pudo eliminar: '+e.message);}});
+ box.querySelectorAll('[data-entry-delete]').forEach(btn=>btn.onclick=async()=>{const [t,id]=btn.dataset.entryDelete.split(':');const c=ENTRY_CONFIG[t];const used=(book.ventasConsumos||[]).some(m=>String(m.sourceId||'')===String(id));if(used){alert('No se puede eliminar este registro porque ya abasteció una o más ventas.');return;}if(!confirm('¿Eliminar este registro?'))return;const prev=book[c.productsKey];book[c.productsKey]=prev.filter(r=>r.id!==id);try{await saveBook();renderEntryTable(t);if(t==='shipment')renderShipmentCards();renderInventory();}catch(e){book[c.productsKey]=prev;alert('No se pudo eliminar: '+e.message);}});
 }
 function renderShipmentCards(){
  const box=$('shipmentCards');if(!box)return;const today=new Date();today.setHours(0,0,0,0);
