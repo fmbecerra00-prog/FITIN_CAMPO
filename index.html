@@ -1195,8 +1195,14 @@ function inventoryRows() {
   }));
   // Cada embarque tiene su propia columna. El ID del registro permite no duplicar cantidades al volver a dibujar la tabla.
   const shipmentRecords=[...(book.embarques||[])].sort((a,b)=>String(a.createdAt||'').localeCompare(String(b.createdAt||'')));
-  const shipmentColumns=shipmentRecords.map((rec,i)=>({id:rec.id||rec.number||('embarque-'+(i+1)),key:'shipment_'+(rec.id||rec.number||i),label:(rec.label?String(rec.label)+' · ':'')+String(rec.number||('Embarque '+(i+1)))}));
-  shipmentRecords.forEach((rec,i)=>(rec.lines||[]).forEach(line=>{
+  // Los embarques recibidos pasan a formar parte del stock de Trenque Lauquen.
+  // Solo los embarques pendientes conservan una columna propia en Stock general.
+  const pendingShipments=shipmentRecords.filter(rec=>!rec.receivedAt && !rec.received);
+  shipmentRecords.filter(rec=>rec.receivedAt || rec.received).forEach(rec=>(rec.lines||[]).forEach(line=>{
+    const item=findItem(line); if(!item)return; item.trenque+=numberValue(line.quantity);
+  }));
+  const shipmentColumns=pendingShipments.map((rec,i)=>({id:rec.id||rec.number||('embarque-'+(i+1)),key:'shipment_'+(rec.id||rec.number||i),label:(rec.label?String(rec.label)+' · ':'')+String(rec.number||('Embarque '+(i+1)))}));
+  pendingShipments.forEach((rec,i)=>(rec.lines||[]).forEach(line=>{
     const item=findItem(line); if(!item)return; const qty=numberValue(line.quantity);
     const col=shipmentColumns[i]; item.shipmentValues[col.key]=(item.shipmentValues[col.key]||0)+qty;
   }));
@@ -1643,9 +1649,24 @@ async function saveEntry(type){
 function renderEntryTable(type){
  const cfg=ENTRY_CONFIG[type],box=$(cfg.tableId);if(!box)return;const records=[...(book[cfg.productsKey]||[])].sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
  if(!records.length){box.innerHTML='<p class="muted" style="padding:12px">Todavía no hay registros.</p>';return;}
- let html='<table class="request-lines"><thead><tr><th>N.º</th><th>Operación</th><th>Cliente / referencia</th><th>Fecha solicitada / estimada</th><th>Fecha y hora de registro</th><th>Productos y cantidades</th><th>Acción</th></tr></thead><tbody>';
- records.forEach(r=>{const detail=(r.lines||[]).map(l=>`${esc(l.product)}${l.code?' ('+esc(l.code)+')':''} — ${esc(l.quantity)}`).join('<br>');html+=`<tr><td>${esc(r.number)}</td><td>${esc(r.operation)}</td><td>${esc(r.client||r.label||'—')}</td><td>${esc(formatDateOnly(r.date||r.estimatedDate))}</td><td>${esc(formatRequestDate(r.createdAt))}</td><td>${detail}</td><td><button class="danger" data-entry-delete="${type}:${esc(r.id)}">Eliminar</button></td></tr>`;});
- box.innerHTML=html+'</tbody></table>';box.querySelectorAll('[data-entry-delete]').forEach(btn=>btn.onclick=async()=>{const [t,id]=btn.dataset.entryDelete.split(':');const c=ENTRY_CONFIG[t];if(!confirm('¿Eliminar este registro?'))return;const prev=book[c.productsKey];book[c.productsKey]=prev.filter(r=>r.id!==id);try{await saveBook();renderEntryTable(t);if(t==='shipment')renderShipmentCards();renderInventory();}catch(e){book[c.productsKey]=prev;alert('No se pudo eliminar: '+e.message);}});
+ let html='<table class="request-lines"><thead><tr><th>N.º</th><th>Operación</th><th>Cliente / referencia</th><th>Fecha solicitada / estimada</th><th>Fecha y hora de registro</th><th>Productos y cantidades</th><th>'+(type==='shipment'?'Recibido':'Acción')+'</th></tr></thead><tbody>';
+ records.forEach(r=>{const detail=(r.lines||[]).map(l=>`${esc(l.product)}${l.code?' ('+esc(l.code)+')':''} — ${esc(l.quantity)}`).join('<br>');
+   let action='';
+   if(type==='shipment') action=`<label style="display:flex;align-items:center;gap:7px;white-space:nowrap"><input type="checkbox" data-shipment-received="${esc(r.id)}" ${r.receivedAt||r.received?'checked':''}> ${r.receivedAt||r.received?'Recibido':'Marcar recibido'}</label>${r.receivedAt?`<small class="muted">${esc(formatRequestDate(r.receivedAt))}</small>`:''}`;
+   else action=`<button class="danger" data-entry-delete="${type}:${esc(r.id)}">Eliminar</button>`;
+   html+=`<tr ${type==='shipment'&&(r.receivedAt||r.received)?'style="opacity:.72"':''}><td>${esc(r.number)}</td><td>${esc(r.operation)}</td><td>${esc(r.client||r.label||'—')}</td><td>${esc(formatDateOnly(r.date||r.estimatedDate))}</td><td>${esc(formatRequestDate(r.createdAt))}</td><td>${detail}</td><td>${action}</td></tr>`;
+ });
+ box.innerHTML=html+'</tbody></table>';
+ box.querySelectorAll('[data-shipment-received]').forEach(input=>input.onchange=async()=>{
+   const id=input.dataset.shipmentReceived,rec=(book.embarques||[]).find(r=>String(r.id)===String(id));if(!rec)return;
+   const previous={received:rec.received,receivedAt:rec.receivedAt,receivedBy:rec.receivedBy};
+   if(input.checked){if(!confirm('¿Confirmás que este embarque ya fue recibido? Sus cantidades se sumarán al stock de Trenque Lauquen y dejará de figurar como embarque pendiente.')){input.checked=false;return;}rec.received=true;rec.receivedAt=new Date().toISOString();rec.receivedBy=currentUser?.email||'Usuario';}
+   else {if(!confirm('¿Querés desmarcar este embarque como recibido? Las cantidades volverán a figurar como embarque pendiente y se descontarán del stock de Trenque Lauquen.')){input.checked=true;return;}delete rec.received;delete rec.receivedAt;delete rec.receivedBy;}
+   input.disabled=true;
+   try{await saveBook();renderEntryTable('shipment');renderShipmentCards();renderInventory();}
+   catch(e){Object.assign(rec,previous);if(previous.received===undefined)delete rec.received;if(previous.receivedAt===undefined)delete rec.receivedAt;if(previous.receivedBy===undefined)delete rec.receivedBy;alert('No se pudo actualizar el estado del embarque: '+e.message);renderEntryTable('shipment');}
+ });
+ box.querySelectorAll('[data-entry-delete]').forEach(btn=>btn.onclick=async()=>{const [t,id]=btn.dataset.entryDelete.split(':');const c=ENTRY_CONFIG[t];if(!confirm('¿Eliminar este registro?'))return;const prev=book[c.productsKey];book[c.productsKey]=prev.filter(r=>r.id!==id);try{await saveBook();renderEntryTable(t);if(t==='shipment')renderShipmentCards();renderInventory();}catch(e){book[c.productsKey]=prev;alert('No se pudo eliminar: '+e.message);}});
 }
 function renderShipmentCards(){
  const box=$('shipmentCards');if(!box)return;const today=new Date();today.setHours(0,0,0,0);
