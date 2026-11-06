@@ -65,7 +65,9 @@ header p {margin:6px 0 0;opacity:.8}
 .table-wrap {overflow:auto;max-width:100%;border:1px solid var(--border);border-radius:10px}
 table {width:100%;border-collapse:collapse;background:var(--card)}
 th,td {padding:10px 12px;text-align:left;border-bottom:1px solid var(--border)}
-th {background:var(--header);color:white;white-space:nowrap}
+th {background:var(--header);color:white;white-space:normal;overflow-wrap:anywhere;word-break:normal;line-height:1.3;vertical-align:middle;padding:16px 12px;min-height:64px}
+#inventoryTable th {min-width:125px;height:78px;padding:18px 12px}
+#inventoryTable th:last-child {min-width:150px}
 td[contenteditable=true]:focus {outline:2px solid var(--primary)}
 .status {min-height:20px;margin:10px 0;overflow-wrap:anywhere}
 .error {color:#bd3545}.success {color:#16834b}
@@ -191,7 +193,7 @@ footer {text-align:center;color:var(--muted);padding:22px}
       <p id="dashboardStockStatus" class="status"></p>
     </div>
 
-    <div class="panel">
+    <div class="panel dashboard-product-search hidden">
       <h2>Buscar producto</h2>
       <div class="design-grid no-print">
         <div><label>Hoja de productos</label><select id="productSheet"></select></div>
@@ -301,6 +303,11 @@ footer {text-align:center;color:var(--muted);padding:22px}
       <div class="toolbar"><button id="consAddLine">Agregar producto</button><button class="secondary" id="consNewProduct">Crear producto y código</button><button id="consSave">Registrar consignación</button></div>
       <div id="consLines" class="table-wrap"></div><p id="consStatus" class="status"></p>
     </div><div class="panel"><h2>Consignaciones registradas</h2><div id="consTable" class="table-wrap"></div></div>
+    <div class="panel">
+      <h2>Inventario en consignación por cliente</h2>
+      <p class="muted">Vista consolidada: cada columna corresponde a un cliente y a la fecha de consignación. En las filas se identifica cada producto por su nombre y código; las celdas indican las unidades que tiene cada cliente.</p>
+      <div id="consignmentMatrix" class="table-wrap"></div>
+    </div>
   </section>
   <section id="pedidosTab" class="hidden">
     <div class="panel">
@@ -1292,16 +1299,19 @@ function inventoryRows() {
   (book.pedidosFabricacion||[]).forEach(rec=>(rec.lines||[]).forEach(line=>{
     const item=findItem(line); if(!item)return; item.fabricacion+=numberValue(line.quantity);
   }));
-  // Cada embarque tiene su propia columna. El ID del registro permite no duplicar cantidades al volver a dibujar la tabla.
-  const shipmentRecords=[...(book.embarques||[])].sort((a,b)=>String(a.createdAt||'').localeCompare(String(b.createdAt||'')));
-  // Los embarques recibidos pasan a formar parte del stock de Trenque Lauquen.
-  // Solo los embarques pendientes conservan una columna propia en Stock general.
-  const pendingShipments=shipmentRecords.filter(rec=>!rec.receivedAt && !rec.received);
+  // Cada embarque conserva su propia columna, con su fecha y referencia.
+  // Los recibidos también se muestran como historial, pero su cantidad ya está incluida en Trenque Lauquen.
+  const shipmentRecords=[...(book.embarques||[])].sort((a,b)=>String(a.date||a.estimatedDate||'').localeCompare(String(b.date||b.estimatedDate||''))||String(a.createdAt||'').localeCompare(String(b.createdAt||'')));
   shipmentRecords.filter(rec=>rec.receivedAt || rec.received).forEach(rec=>(rec.lines||[]).forEach(line=>{
     const item=findItem(line); if(!item)return; item.trenque+=numberValue(line.quantity);
   }));
-  const shipmentColumns=pendingShipments.map((rec,i)=>({id:rec.id||rec.number||('embarque-'+(i+1)),key:'shipment_'+(rec.id||rec.number||i),label:(rec.label?String(rec.label)+' · ':'')+String(rec.number||('Embarque '+(i+1)))}));
-  pendingShipments.forEach((rec,i)=>(rec.lines||[]).forEach(line=>{
+  const shipmentColumns=shipmentRecords.map((rec,i)=>({
+    id:rec.id||rec.number||('embarque-'+(i+1)),
+    key:'shipment_'+(rec.id||rec.number||i),
+    received:!!(rec.receivedAt||rec.received),
+    label:[rec.label?String(rec.label):String(rec.number||('Embarque '+(i+1))),formatDateOnly(rec.date||rec.estimatedDate),((rec.receivedAt||rec.received)?'Recibido':'Pendiente')].filter(Boolean).join(' · ')
+  }));
+  shipmentRecords.forEach((rec,i)=>(rec.lines||[]).forEach(line=>{
     const item=findItem(line); if(!item)return; const qty=numberValue(line.quantity);
     const col=shipmentColumns[i]; item.shipmentValues[col.key]=(item.shipmentValues[col.key]||0)+qty;
   }));
@@ -1318,7 +1328,7 @@ function inventoryRows() {
       else {const col=shipmentColumns.find(x=>String(x.id)===String(move.sourceId));if(col)item.shipmentValues[col.key]=Math.max(0,numberValue(item.shipmentValues[col.key])-qty);}
     }
   });
-  grouped.forEach(item=>{item.embarques=item.legacyEmbarques+Object.values(item.shipmentValues).reduce((a,b)=>a+b,0);});
+  grouped.forEach(item=>{item.embarques=item.legacyEmbarques+shipmentColumns.filter(col=>!col.received).reduce((a,col)=>a+numberValue(item.shipmentValues?.[col.key]||0),0);});
   const rows=[...grouped.values()].sort((a,b)=>a.name.localeCompare(b.name,'es')||a.code.localeCompare(b.code,'es'));
   rows.shipmentColumns=shipmentColumns;
   return rows;
@@ -1326,7 +1336,7 @@ function inventoryRows() {
 function renderInventory() {
   const rows=inventoryRows();
   const shipmentColumns=rows.shipmentColumns||[];
-  const total=rows.reduce((sum,r)=>sum+r.trenque+r.consignacion+r.fabricacion+r.legacyEmbarques+Object.values(r.shipmentValues||{}).reduce((a,b)=>a+b,0),0);
+  const total=rows.reduce((sum,r)=>sum+r.trenque+r.consignacion+r.fabricacion+r.legacyEmbarques+shipmentColumns.filter(c=>!c.received).reduce((a,c)=>a+numberValue(r.shipmentValues?.[c.key]||0),0),0);
   $("inventoryStats").innerHTML=[
     ["Total de productos ofrecidos",rows.length,"Productos únicos según nombre y código"],
     ["Stock total consolidado",total,"Trenque Lauquen + Consignación + En fabricación + embarques"]
@@ -1336,7 +1346,7 @@ function renderInventory() {
   shipmentColumns.forEach(col=>headers.push(col.label));
   if(!shipmentColumns.length&&!rows.some(r=>r.legacyEmbarques!==0)) headers.push("Embarques");
   const body=rows.map(r=>{
-    const shipmentTotal=Object.values(r.shipmentValues||{}).reduce((a,b)=>a+b,0);
+    const shipmentTotal=shipmentColumns.filter(col=>!col.received).reduce((a,col)=>a+numberValue(r.shipmentValues?.[col.key]||0),0);
     const legacy=(headers.includes("Embarques existentes")?r.legacyEmbarques:0);
     const totalRow=r.trenque+r.consignacion+r.fabricacion+legacy+shipmentTotal;
     const cells=[`<td>${esc(r.name)}</td>`,`<td>${esc(r.code||"—")}</td>`,`<td><strong>${totalRow}</strong></td>`,`<td><strong>${r.demanda||0}</strong></td>`,`<td>${r.trenque}</td>`,`<td>${r.consignacion}</td>`,`<td>${r.fabricacion}</td>`];
@@ -2001,6 +2011,26 @@ async function saveEntry(type){
  try{await saveBook();message(cfg.statusId,`${cfg.operation}: ${record.number} registrado correctamente.`);entryDrafts[type]=[{productKey:'',product:'',code:'',quantity:1}];if(cfg.clientId)$(cfg.clientId).value='';$(cfg.dateId).value='';if(type==='shipment')$('shipmentLabel').value='';renderEntryLines(type);renderEntryTable(type);if(type==='shipment')renderShipmentCards();renderInventory();}
  catch(e){book[cfg.productsKey]=book[cfg.productsKey].filter(x=>x.id!==record.id);book[cfg.counterKey]--;message(cfg.statusId,'No se pudo guardar: '+e.message,true);}
 }
+function renderConsignmentMatrix(){
+ const box=$('consignmentMatrix');if(!box)return;
+ const records=[...(book.consignaciones||[])].sort((a,b)=>String(a.date||'').localeCompare(String(b.date||''))||String(a.client||'').localeCompare(String(b.client||''),'es'));
+ if(!records.length){box.innerHTML='<p class="muted" style="padding:12px">Todavía no hay productos en consignación.</p>';return;}
+ const products=new Map();
+ records.forEach((rec,ri)=>(rec.lines||[]).forEach(line=>{
+   const name=String(line.product||'').trim(),code=String(line.code||'').trim();
+   if(!name&&!code)return;
+   const key=code?'code:'+norm(code):'name:'+norm(name);
+   if(!products.has(key))products.set(key,{name,code,quantities:{}});
+   const item=products.get(key);if(!item.name&&name)item.name=name;if(!item.code&&code)item.code=code;
+   const consumed=(book.ventasConsumos||[]).filter(move=>move.sourceType==='consignacion'&&String(move.sourceId||'')===String(rec.id||'')&&((code&&norm(move.code)===norm(code))||(!code&&norm(move.product)===norm(name)))).reduce((sum,move)=>sum+numberValue(move.quantity),0);
+   item.quantities[ri]=(item.quantities[ri]||0)+Math.max(0,numberValue(line.quantity)-consumed);
+ }));
+ const columns=records.map((rec,i)=>({key:i,label:String(rec.client||'Cliente sin identificar'),date:formatDateOnly(rec.date)}));
+ const header='<tr><th>Producto</th><th>Código</th>'+columns.map(c=>`<th>${esc(c.label)}<br><small style="color:#e5eaf5;font-weight:400">${esc(c.date)}</small></th>`).join('')+'</tr>';
+ const rows=[...products.values()].sort((a,b)=>a.name.localeCompare(b.name,'es')||a.code.localeCompare(b.code,'es'));
+ const body=rows.map(item=>'<tr><td>'+esc(item.name||'—')+'</td><td>'+esc(item.code||'—')+'</td>'+columns.map(c=>`<td>${numberValue(item.quantities[c.key]||0)||'—'}</td>`).join('')+'</tr>').join('');
+ box.innerHTML='<table><thead>'+header+'</thead><tbody>'+body+'</tbody></table>';
+}
 function renderEntryTable(type){
  const cfg=ENTRY_CONFIG[type],box=$(cfg.tableId);if(!box)return;const records=[...(book[cfg.productsKey]||[])].sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
  if(!records.length){box.innerHTML='<p class="muted" style="padding:12px">Todavía no hay registros.</p>';return;}
@@ -2012,6 +2042,7 @@ function renderEntryTable(type){
    html+=`<tr ${type==='shipment'&&(r.receivedAt||r.received)?'style="opacity:.72"':''}><td>${esc(r.number)}</td><td>${esc(r.operation)}</td><td>${esc(r.client||r.label||'—')}</td><td>${esc(formatDateOnly(r.date||r.estimatedDate))}</td><td>${esc(formatRequestDate(r.createdAt))}</td><td>${detail}</td><td>${action}</td></tr>`;
  });
  box.innerHTML=html+'</tbody></table>';
+ if(type==='cons')renderConsignmentMatrix();
  box.querySelectorAll('[data-shipment-received]').forEach(input=>input.onchange=async()=>{
    const id=input.dataset.shipmentReceived,rec=(book.embarques||[]).find(r=>String(r.id)===String(id));if(!rec)return;
    const previous={received:rec.received,receivedAt:rec.receivedAt,receivedBy:rec.receivedBy};
