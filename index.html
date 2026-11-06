@@ -634,8 +634,14 @@ $("loginForm").addEventListener("submit", async e => {
   e.preventDefault();
   if (loginInProgress) return;
 
-  const email = $("email").value.trim().toLowerCase();
-  const password = $("password").value;
+  const emailInput=$("email");
+  const passwordInput=$("password");
+  if(!emailInput || !passwordInput) {
+    message("loginStatus","No se encontraron los campos de acceso. Recargá la página y verificá que el HTML esté actualizado.",true);
+    return;
+  }
+  const email = emailInput.value.trim().toLowerCase();
+  const password = passwordInput.value;
   if (!email || !password) {
     message("loginStatus", "Ingresá el correo electrónico y la contraseña registrados en Supabase.", true);
     return;
@@ -646,8 +652,11 @@ $("loginForm").addEventListener("submit", async e => {
   }
 
   loginInProgress = true;
-  $("loginBtn").disabled = true;
-  $("loginBtn").textContent = "Ingresando...";
+  const loginButton=$("loginBtn");
+  if(loginButton) {
+    loginButton.disabled = true;
+    loginButton.textContent = "Ingresando...";
+  }
   message("loginStatus", "Verificando acceso...");
   try {
     const { data, error } = await sb.auth.signInWithPassword({ email, password });
@@ -674,8 +683,11 @@ $("loginForm").addEventListener("submit", async e => {
     message("loginStatus", msg, true);
   } finally {
     loginInProgress = false;
-    $("loginBtn").disabled = false;
-    $("loginBtn").textContent = "Iniciar sesión";
+    const loginButton=$("loginBtn");
+    if(loginButton) {
+      loginButton.disabled = false;
+      loginButton.textContent = "Iniciar sesión";
+    }
   }
 });
 
@@ -2276,10 +2288,13 @@ $("colorControls").innerHTML=COLORS.map(([k,label])=>`<div><label>${label}</labe
 </div></div>`).join("");
 
 COLORS.forEach(([k])=>{
-  $("color_"+k).oninput=()=>{$("hex_"+k).value=$("color_"+k).value;previewDesign();};
-  $("hex_"+k).onchange=()=>{
-    if(/^#[0-9a-f]{6}$/i.test($("hex_"+k).value)) {
-      $("color_"+k).value=$("hex_"+k).value;previewDesign();
+  const colorEl=$("color_"+k);
+  const hexEl=$("hex_"+k);
+  if(colorEl) colorEl.oninput=()=>{if(hexEl) hexEl.value=colorEl.value;previewDesign();};
+  if(hexEl) hexEl.onchange=()=>{
+    if(/^#[0-9a-f]{6}$/i.test(hexEl.value)) {
+      if(colorEl) colorEl.value=hexEl.value;
+      previewDesign();
     }
   };
 });
@@ -2293,8 +2308,18 @@ function populateDesign() {
     dFont:"font",dFontSize:"fontSize",dTitleSize:"titleSize",
     dWidth:"width",dRadius:"radius"
   };
-  Object.entries(map).forEach(([id,k])=>$(id).value=d[k]);
-  COLORS.forEach(([k])=>{$("color_"+k).value=d[k];$("hex_"+k).value=d[k];});
+  // Los controles de diseño pueden no estar montados todavía en algunas vistas.
+  // Evitar asignar .value sobre un elemento inexistente durante el inicio de sesión.
+  Object.entries(map).forEach(([id,k])=>{
+    const el=$(id);
+    if(el) el.value=d[k];
+  });
+  COLORS.forEach(([k])=>{
+    const colorEl=$("color_"+k);
+    const hexEl=$("hex_"+k);
+    if(colorEl) colorEl.value=d[k];
+    if(hexEl) hexEl.value=d[k];
+  });
 }
 function readDesign() {
   const d={...DEFAULT_DESIGN};
