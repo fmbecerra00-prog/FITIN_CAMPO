@@ -143,6 +143,26 @@ footer {text-align:center;color:var(--muted);padding:22px}
 .consignment-matrix-table th.cons-matrix-client small {display:block;color:#e5eaf5;font-weight:400;margin-top:5px}
 .consignment-matrix-table td.cons-matrix-qty {text-align:center;font-weight:600}
 
+
+/* Alertas de reposición y calendario de ingresos */
+.replenishment-alert-list{display:grid;gap:12px}
+.replenishment-alert-card{display:flex;gap:14px;align-items:flex-start;padding:16px 18px;border:1px solid #f2b8a9;border-left:5px solid #d94835;border-radius:13px;background:linear-gradient(110deg,#fff4f1,#fffaf8);box-shadow:0 5px 16px rgba(130,40,25,.07)}
+.replenishment-alert-icon{flex:0 0 34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#d94835;color:white;font-weight:800;font-size:21px}
+.replenishment-alert-content{min-width:0;flex:1}.replenishment-alert-heading{display:flex;align-items:center;gap:10px;flex-wrap:wrap;color:#8f2418;font-size:16px}
+.replenishment-alert-badge{font-size:11px;letter-spacing:.06em;border-radius:20px;padding:4px 9px;background:#fee2dc;color:#a52c1e;font-weight:800}
+.replenishment-alert-meta{margin-top:7px;color:#5c5360}.replenishment-alert-content p{margin:8px 0 0;color:#75433c}
+.shipment-calendar-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0 16px}.shipment-calendar-toolbar h3{text-transform:capitalize;margin:0}
+.shipment-calendar-legend{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:12px;color:#64748b;font-size:13px}.shipment-calendar-legend span{display:flex;align-items:center;gap:7px}
+.shipment-calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:7px}
+.shipment-calendar-weekdays span{text-align:center;padding:8px 2px;color:#64748b;font-size:12px;font-weight:700}
+.shipment-calendar-day{min-height:66px;border:1px solid #dce3ef;border-radius:10px;background:#fff;color:#1e293b;text-align:left;padding:8px;display:flex;flex-direction:column;gap:6px;cursor:pointer}
+.shipment-calendar-day:hover,.shipment-calendar-day.is-selected{border-color:#3769b1;box-shadow:0 0 0 2px rgba(55,105,177,.12)}
+.shipment-calendar-day.has-events{background:#fff9ed;border-color:#edc878}.shipment-calendar-day.is-received{background:#effaf3;border-color:#91d1a5}
+.shipment-calendar-day i{font-style:normal;font-size:10px;color:#8a5a13;line-height:1.2}.shipment-calendar-day.is-received i{color:#237342}
+.shipment-calendar-empty{min-height:66px}
+.calendar-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#e2a52e;flex:0 0 9px}.calendar-dot.received{background:#29965a}
+.shipment-calendar-detail{margin-top:16px;padding:14px 16px;border-radius:11px;background:#f5f8fc;border:1px solid #dce3ef}.shipment-calendar-detail ul{margin:9px 0 0;padding-left:20px}.shipment-calendar-detail li{margin:7px 0}.shipment-calendar-detail li .calendar-dot{margin-right:7px}
+@media(max-width:640px){.shipment-calendar-grid{gap:3px}.shipment-calendar-day{min-height:54px;padding:5px;font-size:12px}.shipment-calendar-day i{font-size:9px}.shipment-calendar-toolbar h3{font-size:15px}}
 </style>
 </head>
 <body>
@@ -329,7 +349,7 @@ footer {text-align:center;color:var(--muted);padding:22px}
     </div><div class="panel"><h2>Pedidos registrados</h2><div id="pedidoTable" class="table-wrap"></div></div>
   </section>
   <section id="embarquesTab" class="hidden">
-    <div class="panel"><h2>Próximos embarques</h2><p class="muted">Avisos calculados automáticamente a partir de la fecha estimada de ingreso.</p><div id="shipmentCards" class="shipment-cards"></div></div>
+    <div class="panel"><h2>Calendario de ingresos de mercadería</h2><p class="muted">Visualizá las fechas estimadas y los ingresos confirmados. Seleccioná un día para ver sus embarques.</p><div id="shipmentCalendar" class="shipment-calendar"></div></div><div class="panel"><h2>Próximos embarques</h2><p class="muted">Avisos calculados automáticamente a partir de la fecha estimada de ingreso.</p><div id="shipmentCards" class="shipment-cards"></div></div>
     <div class="panel"><h2>Registrar embarque</h2><p class="muted">La fecha y hora de registro se asignan automáticamente al guardar.</p>
       <div class="form-grid"><div><label for="shipmentDate">Fecha estimada de ingreso</label><input id="shipmentDate" type="date"></div><div><label for="shipmentLabel">Identificación / referencia (opcional)</label><input id="shipmentLabel" placeholder="Ej. Embarque octubre 01"></div></div>
       <div class="toolbar"><button type="button" id="shipmentAddLine">Agregar producto</button><button type="button" class="secondary" id="shipmentNewProduct">Crear producto y código</button><button type="button" id="shipmentSave">Registrar embarque</button></div>
@@ -1412,14 +1432,19 @@ function replenishmentState(row){
  const t=replenishmentThreshold(row),d=traceDataForProduct(row);
  const pending=d.shipments.filter(x=>!x.received).reduce((a,x)=>a+x.quantity,0);
  const fab=d.fabrication.reduce((a,x)=>a+x.quantity,0),cons=d.cons.reduce((a,x)=>a+x.quantity,0);
- const localLow=row.trenque<=Number(t.trenque||0);
- const coverageLow=pending<Number(t.embarques||0)||fab<Number(t.fabricacion||0)||cons<Number(t.consignacion||0);
- return {alarm:localLow&&coverageLow,pending,fab,cons,t};
+ const localLow=Number(row.trenque)<=Number(t.trenque||0);
+ // Cada umbral se evalúa por separado: tener stock en fabricación o consignación
+ // no debe ocultar una falta de stock en el depósito principal.
+ const coverageIssues=[];
+ if(Number(t.embarques||0)>0&&pending<Number(t.embarques))coverageIssues.push(`Embarques pendientes: ${pending} / mínimo ${Number(t.embarques)}`);
+ if(Number(t.fabricacion||0)>0&&fab<Number(t.fabricacion))coverageIssues.push(`Fabricación: ${fab} / mínimo ${Number(t.fabricacion)}`);
+ if(Number(t.consignacion||0)>0&&cons<Number(t.consignacion))coverageIssues.push(`Consignación: ${cons} / mínimo ${Number(t.consignacion)}`);
+ return {alarm:localLow||coverageIssues.length>0,localLow,coverageIssues,pending,fab,cons,t};
 }
 function renderReplenishmentAlerts(rows=inventoryRows()){
  const alarms=rows.map(r=>({r,state:replenishmentState(r)})).filter(x=>x.state.alarm).sort((a,b)=>a.r.name.localeCompare(b.r.name,'es'));
  if(!alarms.length)return '<p class="muted">No hay productos que requieran reposición según los parámetros actuales.</p>';
- return '<table><thead><tr><th>Producto</th><th>Código</th><th>Stock Trenque Lauquen</th><th>Reposición</th><th>Cobertura pendiente</th></tr></thead><tbody>'+alarms.map(({r,state})=>`<tr><td>${esc(r.name)}</td><td>${esc(r.code||'—')}</td><td>${r.trenque}</td><td><strong>REPONER</strong></td><td>Embarques: ${state.pending} · Fabricación: ${state.fab} · Consignación: ${state.cons}</td></tr>`).join('')+'</tbody></table>';
+ return `<div class="replenishment-alert-list">${alarms.map(({r,state})=>`<article class="replenishment-alert-card"><div class="replenishment-alert-icon">!</div><div class="replenishment-alert-content"><div class="replenishment-alert-heading"><strong>Reponer ${esc(r.name)}</strong><span class="replenishment-alert-badge">STOCK BAJO</span></div><div class="replenishment-alert-meta">Código: ${esc(r.code||'—')} · Stock en Trenque Lauquen: <strong>${esc(r.trenque)}</strong> · Mínimo configurado: ${esc(state.t.trenque||0)}</div><p>${state.localLow?'El stock del depósito principal está en el mínimo o por debajo. ':''}${state.coverageIssues.length?state.coverageIssues.map(esc).join(' · '):'Se recomienda generar una reposición para recuperar el stock disponible.'}</p></div></article>`).join('')}</div>`;
 }
 function renderReplenishmentConfig(){
  const box=$('replenishmentConfigTable');if(!box)return;
@@ -2202,7 +2227,50 @@ function renderEntryTable(type){
  });
  box.querySelectorAll('[data-entry-delete]').forEach(btn=>btn.onclick=async()=>{const [t,id]=btn.dataset.entryDelete.split(':');const c=ENTRY_CONFIG[t];const used=(book.ventasConsumos||[]).some(m=>String(m.sourceId||'')===String(id));if(used){alert('No se puede eliminar este registro porque ya abasteció una o más ventas.');return;}if(!confirm('¿Eliminar este registro?'))return;const prev=book[c.productsKey];book[c.productsKey]=prev.filter(r=>r.id!==id);try{await saveBook();renderEntryTable(t);if(t==='shipment')renderShipmentCards();renderInventory();}catch(e){book[c.productsKey]=prev;alert('No se pudo eliminar: '+e.message);}});
 }
+
+let shipmentCalendarMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1);
+let shipmentCalendarSelected='';
+function shipmentISODate(raw){
+ if(!raw)return '';
+ const value=String(raw);
+ const iso=value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+ if(iso)return `${iso[1]}-${iso[2]}-${iso[3]}`;
+ const d=new Date(value);if(Number.isNaN(d.getTime()))return '';
+ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function renderShipmentCalendar(){
+ const box=$('shipmentCalendar');if(!box)return;
+ const year=shipmentCalendarMonth.getFullYear(),month=shipmentCalendarMonth.getMonth();
+ const first=new Date(year,month,1),last=new Date(year,month+1,0);
+ const start=(first.getDay()+6)%7,days=last.getDate();
+ const events={};
+ (book.embarques||[]).forEach(rec=>{
+   const estimated=shipmentISODate(rec.date||rec.estimatedDate);
+   const actual=shipmentISODate(rec.receivedAt);
+   const add=(date,type)=>{if(!date)return;(events[date]??=[]).push({rec,type});};
+   add(estimated,rec.receivedAt||rec.received?'received':'estimated');
+   if(actual&&actual!==estimated)add(actual,'received');
+ });
+ const monthName=shipmentCalendarMonth.toLocaleDateString('es-AR',{month:'long',year:'numeric'});
+ let cells='';
+ for(let i=0;i<start;i++)cells+='<div class="shipment-calendar-empty"></div>';
+ for(let day=1;day<=days;day++){
+   const date=`${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+   const ev=events[date]||[],classes=['shipment-calendar-day'];
+   if(ev.length)classes.push('has-events');
+   if(ev.some(x=>x.type==='received'))classes.push('is-received');
+   if(ev.some(x=>x.type==='estimated'))classes.push('is-estimated');
+   if(shipmentCalendarSelected===date)classes.push('is-selected');
+   cells+=`<button type="button" class="${classes.join(' ')}" data-calendar-date="${date}"><span>${day}</span>${ev.length?`<i>${ev.length} ${ev.length===1?'embarque':'embarques'}</i>`:''}</button>`;
+ }
+ const selected=shipmentCalendarSelected&&events[shipmentCalendarSelected]||[];
+ const detail=selected.length?`<div class="shipment-calendar-detail"><strong>Ingresos del ${formatDateOnly(shipmentCalendarSelected)}</strong><ul>${selected.map(({rec,type})=>`<li><span class="calendar-dot ${type}"></span><strong>${esc(rec.label||rec.number||'Embarque')}</strong> — ${type==='received'?'Recibido':'Fecha estimada'}${(rec.lines||[]).length?': '+(rec.lines||[]).map(l=>`${esc(l.product)} (${esc(l.quantity)})`).join(', '):''}</li>`).join('')}</ul></div>`:'<p class="muted shipment-calendar-hint">Elegí un día marcado para consultar los embarques previstos o recibidos.</p>';
+ box.innerHTML=`<div class="shipment-calendar-toolbar"><button type="button" class="secondary" data-calendar-nav="-1">‹ Anterior</button><h3>${esc(monthName)}</h3><button type="button" class="secondary" data-calendar-nav="1">Siguiente ›</button></div><div class="shipment-calendar-legend"><span><i class="calendar-dot estimated"></i> Fecha estimada</span><span><i class="calendar-dot received"></i> Mercadería recibida</span></div><div class="shipment-calendar-grid shipment-calendar-weekdays">${['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map(x=>`<span>${x}</span>`).join('')}</div><div class="shipment-calendar-grid">${cells}</div>${detail}`;
+ box.querySelectorAll('[data-calendar-nav]').forEach(btn=>btn.onclick=()=>{shipmentCalendarMonth.setMonth(shipmentCalendarMonth.getMonth()+Number(btn.dataset.calendarNav));renderShipmentCalendar();});
+ box.querySelectorAll('[data-calendar-date]').forEach(btn=>btn.onclick=()=>{shipmentCalendarSelected=btn.dataset.calendarDate;renderShipmentCalendar();});
+}
 function renderShipmentCards(){
+ renderShipmentCalendar();
  const box=$('shipmentCards');if(!box)return;const today=new Date();today.setHours(0,0,0,0);
  const list=(book.embarques||[]).filter(e=>e.date||e.estimatedDate).map(e=>{const d=new Date((e.date||e.estimatedDate)+'T00:00:00');return {...e,days:Math.ceil((d-today)/86400000)}}).sort((a,b)=>a.days-b.days);
  if(!list.length){box.innerHTML='<p class="muted">No hay próximos embarques registrados. Cuando cargues uno, aparecerá acá con el contador actualizado.</p>';return;}
