@@ -1069,11 +1069,14 @@ function renderRecords() {
 
   let html=`<table data-width-key="records:${book.active}"><thead><tr>`+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"<th>Acciones</th></tr></thead><tbody>";
   rows.forEach(x=>{
-    html+="<tr>"+cols.map(c=>{
+    html+="<tr>";
+    cols.forEach(c=>{
       const shown=isMoneyColumn(c)?moneyCellDisplay(x.r[c]):(x.r[c]??"");
-      return `<td ${PUBLIC_MODE?"":"contenteditable=\\"true\\" data-row=\\""+x.i+"\\" data-col=\\""+esc(c)+"\\""}>${esc(shown)}</td>`;
-    }).join("")+
-      `${PUBLIC_MODE?"":"<td><button class=\\"danger\\" data-del=\\""+x.i+"\\">Eliminar</button></td>"}</tr>`;
+      const attrs=PUBLIC_MODE?"":' contenteditable="true" data-row="'+x.i+'" data-col="'+esc(c)+'"';
+      html+='<td'+attrs+'>'+esc(shown)+'</td>';
+    });
+    if(!PUBLIC_MODE) html+='<td><button class="danger" data-del="'+x.i+'">Eliminar</button></td>';
+    html+="</tr>";
   });
   $("recordsTable").innerHTML=html+"</tbody></table>";
   applyColumnWidths($("recordsTable").querySelector("table"),`records:${book.active}`,cols.concat(["Acciones"]));
