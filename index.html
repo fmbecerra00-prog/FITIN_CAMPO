@@ -133,6 +133,16 @@ footer {text-align:center;color:var(--muted);padding:22px}
 .sales-balance.ok{color:#26734d}.sales-balance.bad{color:#b42335}
 .sales-text-preview{max-height:160px;overflow:auto;white-space:pre-wrap;font-size:12px;background:var(--bg);padding:10px;border-radius:8px}
 
+
+/* Tabla consolidada de consignaciones por cliente y fecha */
+#consignmentMatrix {max-height:70vh;overflow:auto}
+.consignment-matrix-table {min-width:max-content}
+.consignment-matrix-table th {text-align:center;min-width:150px}
+.consignment-matrix-table th.cons-matrix-fixed {min-width:170px;text-align:left}
+.consignment-matrix-table th.cons-matrix-client {min-width:190px}
+.consignment-matrix-table th.cons-matrix-client small {display:block;color:#e5eaf5;font-weight:400;margin-top:5px}
+.consignment-matrix-table td.cons-matrix-qty {text-align:center;font-weight:600}
+
 </style>
 </head>
 <body>
@@ -2021,24 +2031,53 @@ async function saveEntry(type){
  catch(e){book[cfg.productsKey]=book[cfg.productsKey].filter(x=>x.id!==record.id);book[cfg.counterKey]--;message(cfg.statusId,'No se pudo guardar: '+e.message,true);}
 }
 function renderConsignmentMatrix(){
- const box=$('consignmentMatrix');if(!box)return;
- const records=[...(book.consignaciones||[])].sort((a,b)=>String(a.date||'').localeCompare(String(b.date||''))||String(a.client||'').localeCompare(String(b.client||''),'es'));
- if(!records.length){box.innerHTML='<p class="muted" style="padding:12px">Todavía no hay productos en consignación.</p>';return;}
- const products=new Map();
- records.forEach((rec,ri)=>(rec.lines||[]).forEach(line=>{
-   const name=String(line.product||'').trim(),code=String(line.code||'').trim();
-   if(!name&&!code)return;
-   const key=code?'code:'+norm(code):'name:'+norm(name);
-   if(!products.has(key))products.set(key,{name,code,quantities:{}});
-   const item=products.get(key);if(!item.name&&name)item.name=name;if(!item.code&&code)item.code=code;
-   const consumed=(book.ventasConsumos||[]).filter(move=>move.sourceType==='consignacion'&&String(move.sourceId||'')===String(rec.id||'')&&((code&&norm(move.code)===norm(code))||(!code&&norm(move.product)===norm(name)))).reduce((sum,move)=>sum+numberValue(move.quantity),0);
-   item.quantities[ri]=(item.quantities[ri]||0)+Math.max(0,numberValue(line.quantity)-consumed);
- }));
- const columns=records.map((rec,i)=>({key:i,label:String(rec.client||'Cliente sin identificar'),date:formatDateOnly(rec.date)}));
- const header='<tr><th>Producto</th><th>Código</th>'+columns.map(c=>`<th>${esc(c.label)}<br><small style="color:#e5eaf5;font-weight:400">${esc(c.date)}</small></th>`).join('')+'</tr>';
- const rows=[...products.values()].sort((a,b)=>a.name.localeCompare(b.name,'es')||a.code.localeCompare(b.code,'es'));
- const body=rows.map(item=>'<tr><td>'+esc(item.name||'—')+'</td><td>'+esc(item.code||'—')+'</td>'+columns.map(c=>`<td>${numberValue(item.quantities[c.key]||0)||'—'}</td>`).join('')+'</tr>').join('');
- box.innerHTML='<table><thead>'+header+'</thead><tbody>'+body+'</tbody></table>';
+  const box=$('consignmentMatrix');if(!box)return;
+  const records=[...(book.consignaciones||[])].sort((a,b)=>
+    String(a.date||'').localeCompare(String(b.date||''))||
+    String(a.client||'').localeCompare(String(b.client||''),'es')||
+    String(a.number||'').localeCompare(String(b.number||''))
+  );
+  if(!records.length){
+    box.innerHTML='<p class="muted" style="padding:12px">Todavía no hay productos en consignación.</p>';
+    return;
+  }
+
+  // Identifica los productos por código; si no tienen código, usa su descripción.
+  const products=new Map();
+  records.forEach((rec,ri)=>{
+    const lineTotals=new Map();
+    (rec.lines||[]).forEach(line=>{
+      const name=String(line.product||'').trim(),code=String(line.code||'').trim();
+      if(!name&&!code)return;
+      const key=code?'code:'+norm(code):'name:'+norm(name);
+      if(!products.has(key))products.set(key,{name,code,quantities:{}});
+      const item=products.get(key);
+      if(!item.name&&name)item.name=name;
+      if(!item.code&&code)item.code=code;
+      lineTotals.set(key,(lineTotals.get(key)||0)+Math.max(0,numberValue(line.quantity)));
+    });
+    lineTotals.forEach((qty,key)=>{
+      const item=products.get(key);
+      const consumed=(book.ventasConsumos||[])
+        .filter(move=>move.sourceType==='consignacion'&&String(move.sourceId||'')===String(rec.id||'')&&
+          (item.code?norm(move.code)===norm(item.code):norm(move.product)===norm(item.name)))
+        .reduce((sum,move)=>sum+numberValue(move.quantity),0);
+      item.quantities[ri]=Math.max(0,qty-consumed);
+    });
+  });
+
+  const columns=records.map((rec,i)=>({
+    key:i,
+    client:String(rec.client||'Cliente sin identificar'),
+    date:formatDateOnly(rec.date),
+    number:String(rec.number||'')
+  }));
+  const header='<tr><th class="cons-matrix-fixed">Producto</th><th class="cons-matrix-fixed">Código</th>'+
+    columns.map(c=>`<th class="cons-matrix-client">${esc(c.client)}<small>${esc(c.date)}${c.number?' · '+esc(c.number):''}</small></th>`).join('')+'</tr>';
+  const rows=[...products.values()].sort((a,b)=>a.name.localeCompare(b.name,'es')||a.code.localeCompare(b.code,'es'));
+  const body=rows.map(item=>'<tr><td>'+esc(item.name||'—')+'</td><td>'+esc(item.code||'—')+'</td>'+
+    columns.map(c=>`<td class="cons-matrix-qty">${numberValue(item.quantities[c.key]||0)||'—'}</td>`).join('')+'</tr>').join('');
+  box.innerHTML='<table class="consignment-matrix-table"><thead>'+header+'</thead><tbody>'+body+'</tbody></table>';
 }
 function renderEntryTable(type){
  const cfg=ENTRY_CONFIG[type],box=$(cfg.tableId);if(!box)return;const records=[...(book[cfg.productsKey]||[])].sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
