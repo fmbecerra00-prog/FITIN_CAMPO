@@ -666,6 +666,16 @@ function numberValue(v) {
   const n=Number(s);
   return Number.isFinite(n)?n:0;
 }
+function isMoneyColumn(name) {
+  return /(costo|coste|precio|valorizable|valor\s+total)/i.test(String(name||""));
+}
+function moneyCellDisplay(value) {
+  const raw=String(value??"").trim();
+  if(!raw) return "";
+  if(/^\$\s*/.test(raw)) return raw;
+  if(/^-?[\d.,]+$/.test(raw)) return "$ "+raw;
+  return raw;
+}
 function localDate() {
   return new Intl.DateTimeFormat("es-AR",{day:"2-digit",month:"2-digit",year:"numeric"}).format(new Date());
 }
@@ -1059,15 +1069,20 @@ function renderRecords() {
 
   let html=`<table data-width-key="records:${book.active}"><thead><tr>`+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"<th>Acciones</th></tr></thead><tbody>";
   rows.forEach(x=>{
-    html+="<tr>"+cols.map(c=>`<td ${PUBLIC_MODE?"":"contenteditable=\"true\" data-row=\""+x.i+"\" data-col=\""+esc(c)+"\""}>${esc(x.r[c]??"")}</td>`).join("")+
-      `${PUBLIC_MODE?"":"<td><button class=\"danger\" data-del=\""+x.i+"\">Eliminar</button></td>"}</tr>`;
+    html+="<tr>"+cols.map(c=>{
+      const shown=isMoneyColumn(c)?moneyCellDisplay(x.r[c]):(x.r[c]??"");
+      return `<td ${PUBLIC_MODE?"":"contenteditable=\\"true\\" data-row=\\""+x.i+"\\" data-col=\\""+esc(c)+"\\""}>${esc(shown)}</td>`;
+    }).join("")+
+      `${PUBLIC_MODE?"":"<td><button class=\\"danger\\" data-del=\\""+x.i+"\\">Eliminar</button></td>"}</tr>`;
   });
   $("recordsTable").innerHTML=html+"</tbody></table>";
   applyColumnWidths($("recordsTable").querySelector("table"),`records:${book.active}`,cols.concat(["Acciones"]));
 
   $("recordsTable").querySelectorAll("[contenteditable]").forEach(td=>{
     td.onblur=()=>{
-      s.rows[Number(td.dataset.row)][td.dataset.col]=td.textContent.trim();
+      let editedValue=td.textContent.trim();
+      if(isMoneyColumn(td.dataset.col)) editedValue=editedValue.replace(/^\$\s*/,"");
+      s.rows[Number(td.dataset.row)][td.dataset.col]=editedValue;
       refreshDerivedViewsAfterRecordEdit();queueRecordsAutosave();
     };
     td.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();td.blur();}};
@@ -1423,15 +1438,12 @@ function renderInventory() {
       };
     }
   }
-  const selectedSheet=book.sheets[Number($("productSheet").value||0)]?.name||"";
-  const isGeneralDashboard=/tablero\s*general/i.test(norm(selectedSheet));
-  const currentCols=columns(activeRows(Number($("productSheet").value||0)));
-  // La valorización se calcula automáticamente cuando la hoja seleccionada
-  // contiene una columna unitaria de costo/precio. No se usa una columna
-  // de totales (por ejemplo, "Total a costo") como precio por unidad.
-  const selectedCostCol=isGeneralDashboard ? "" :
-    (guessCol(currentCols,["costo unitario","coste unitario","precio unitario","valor unitario"]) ||
-     currentCols.find(c=>/(costo|coste|precio|valor)/i.test(norm(c)) && !/(total|subtotal|importe|acumulado)/i.test(norm(c))) || "");
+  const sheetIndex=Number($("productSheet").value||0);
+  const sourceRows=activeRows(sheetIndex);
+  const sourceCols=columns(sourceRows);
+  // Se replican las columnas monetarias originales de Registros, sin mezclar
+  // costo unitario, precio de lista ni importes totales.
+  const moneyCols=sourceCols.filter(isMoneyColumn);
   const rows=inventoryRows();
   const shipmentColumns=rows.shipmentColumns||[];
   const total=rows.reduce((sum,r)=>sum+r.trenque+r.consignacion+r.fabricacion+shipmentColumns.filter(c=>!c.received).reduce((a,c)=>a+numberValue(r.shipmentValues?.[c.key]||0),0),0);
@@ -1439,29 +1451,24 @@ function renderInventory() {
     ["Total de productos ofrecidos",rows.length,"Productos únicos según nombre y código"],
     ["Stock total consolidado",total,"Trenque Lauquen + Consignación + En fabricación + embarques"]
   ];
-  if(selectedCostCol){
-    const source=activeRows(Number($("productSheet").value||0));
-    const valued=rows.reduce((sum,r)=>{
-      const match=source.find(x=>norm(x[$("productCodeCol").value]||"")===norm(r.code||"")||(!r.code&&norm(x[$("productNameCol").value]||"")===norm(r.name)));
-      const unit=match?numberValue(match[selectedCostCol]):0;
-      const shipment=shipmentColumns.filter(c=>!c.received).reduce((a,c)=>a+numberValue(r.shipmentValues?.[c.key]||0),0);
-      return sum+unit*(r.trenque+r.consignacion+r.fabricacion+shipment);
-    },0);
-    inventoryStats.push(["Stock total valorizado",valued.toLocaleString("es-AR",{style:"currency",currency:"ARS"}),`Valorizado automáticamente según «${selectedCostCol}»`]);
-  }
   $("inventoryStats").innerHTML=inventoryStats.map(([a,b,c])=>`<div class="stat"><span class="muted">${esc(a)}</span><strong>${esc(b)}</strong><small>${esc(c)}</small></div>`).join("");
-  const headers=["Producto","Código","Stock total","Trenque Lauquen","Consignación","En fabricación"];
-  if(selectedCostCol) headers.push("Costo / precio unitario","Stock valorizado");
+  const headers=["Producto","Código","Stock total","Trenque Lauquen","Consignación","En fabricación",...moneyCols];
   shipmentColumns.forEach(col=>headers.push(col.label));
+  const nameCol=$("productNameCol").value, codeCol=$("productCodeCol").value;
+  const findSource=r=>sourceRows.find(x=>
+    (r.code && codeCol && norm(x[codeCol]||"")===norm(r.code)) ||
+    ((!r.code || !codeCol) && nameCol && norm(x[nameCol]||"")===norm(r.name))
+  ) || sourceRows.find(x=>nameCol && norm(x[nameCol]||"")===norm(r.name));
   const body=rows.map(r=>{
     const shipmentTotal=shipmentColumns.filter(col=>!col.received).reduce((a,col)=>a+numberValue(r.shipmentValues?.[col.key]||0),0);
     const totalRow=r.trenque+r.consignacion+r.fabricacion+shipmentTotal;
-    const cells=[`<td>${esc(r.name)}</td>`,`<td>${esc(r.code||"—")}</td>`,`<td><strong>${totalRow}</strong></td>`,`<td>${r.trenque}</td>`,`<td>${r.consignacion}</td>`,`<td>${r.fabricacion}</td>`];
-    if(selectedCostCol){
-      const src=activeRows(Number($("productSheet").value||0)).find(x=>norm(x[$("productCodeCol").value]||"")===norm(r.code||"") || (!r.code&&norm(x[$("productNameCol").value]||"")===norm(r.name)));
-      const unit=src?numberValue(src[selectedCostCol]):0;
-      cells.push(`<td>${unit.toLocaleString("es-AR",{style:"currency",currency:"ARS"})}</td>`,`<td><strong>${(unit*totalRow).toLocaleString("es-AR",{style:"currency",currency:"ARS"})}</strong></td>`);
-    }
+    const source=findSource(r)||{};
+    const cells=[
+      `<td>${esc(r.name)}</td>`,`<td>${esc(r.code||"—")}</td>`,
+      `<td><strong>${totalRow}</strong></td>`,`<td>${r.trenque}</td>`,
+      `<td>${r.consignacion}</td>`,`<td>${r.fabricacion}</td>`
+    ];
+    moneyCols.forEach(col=>cells.push(`<td>${esc(moneyCellDisplay(source[col]))}</td>`));
     shipmentColumns.forEach(col=>cells.push(`<td>${numberValue(r.shipmentValues?.[col.key]||0)}</td>`));
     return '<tr>'+cells.join('')+'</tr>';
   }).join("");
