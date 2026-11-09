@@ -263,7 +263,6 @@ footer {text-align:center;color:var(--muted);padding:22px}
       </div>
       <div class="design-grid no-print" style="margin:12px 0">
         <div><label for="inventorySheetSelect">Hoja de registros para inventario</label><select id="inventorySheetSelect"></select></div>
-        <div><label for="inventoryCostCol">Columna de costo / precio unitario</label><select id="inventoryCostCol"></select></div>
       </div>
       <div class="toolbar no-print"><button id="refreshInventoryBtn">Actualizar inventario</button></div>
       <div id="inventoryStats" class="grid"></div>
@@ -1411,10 +1410,28 @@ function inventoryRows() {
 }
 function renderInventory() {
   const sheetPicker=$("inventorySheetSelect");
-  if(sheetPicker){const old=sheetPicker.value;sheetPicker.innerHTML=book.sheets.map((sh,i)=>`<option value="${i}">${esc(sh.name)}</option>`).join("");sheetPicker.value=String(Math.min(Number(old||$("productSheet").value||0),book.sheets.length-1));if(!sheetPicker.dataset.bound){sheetPicker.dataset.bound="1";sheetPicker.onchange=()=>{$("productSheet").value=sheetPicker.value;book.productConfig.sheet=Number(sheetPicker.value);setupProductControls();};}}
-  const costPicker=$("inventoryCostCol");
+  if(sheetPicker){
+    const old=sheetPicker.value;
+    sheetPicker.innerHTML=book.sheets.map((sh,i)=>`<option value="${i}">${esc(sh.name)}</option>`).join("");
+    sheetPicker.value=String(Math.min(Number(old||$("productSheet").value||0),book.sheets.length-1));
+    if(!sheetPicker.dataset.bound){
+      sheetPicker.dataset.bound="1";
+      sheetPicker.onchange=()=>{
+        $("productSheet").value=sheetPicker.value;
+        book.productConfig.sheet=Number(sheetPicker.value);
+        setupProductControls();
+      };
+    }
+  }
+  const selectedSheet=book.sheets[Number($("productSheet").value||0)]?.name||"";
+  const isGeneralDashboard=/tablero\s*general/i.test(norm(selectedSheet));
   const currentCols=columns(activeRows(Number($("productSheet").value||0)));
-  if(costPicker){const old=costPicker.value;costPicker.innerHTML='<option value="">— Sin valorización —</option>'+currentCols.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("");const suggested=old||guessCol(currentCols,["costo","coste","precio","valor unitario","costo unitario","precio unitario"]);if(currentCols.includes(suggested))costPicker.value=suggested;if(!costPicker.dataset.bound){costPicker.dataset.bound="1";costPicker.onchange=()=>renderInventory();}}
+  // La valorización se calcula automáticamente cuando la hoja seleccionada
+  // contiene una columna unitaria de costo/precio. No se usa una columna
+  // de totales (por ejemplo, "Total a costo") como precio por unidad.
+  const selectedCostCol=isGeneralDashboard ? "" :
+    (guessCol(currentCols,["costo unitario","coste unitario","precio unitario","valor unitario"]) ||
+     currentCols.find(c=>/(costo|coste|precio|valor)/i.test(norm(c)) && !/(total|subtotal|importe|acumulado)/i.test(norm(c))) || "");
   const rows=inventoryRows();
   const shipmentColumns=rows.shipmentColumns||[];
   const total=rows.reduce((sum,r)=>sum+r.trenque+r.consignacion+r.fabricacion+shipmentColumns.filter(c=>!c.received).reduce((a,c)=>a+numberValue(r.shipmentValues?.[c.key]||0),0),0);
@@ -1422,19 +1439,30 @@ function renderInventory() {
     ["Total de productos ofrecidos",rows.length,"Productos únicos según nombre y código"],
     ["Stock total consolidado",total,"Trenque Lauquen + Consignación + En fabricación + embarques"]
   ];
-  const selectedCostCol=$("inventoryCostCol")?.value||"";
-  if(selectedCostCol){const source=activeRows(Number($("productSheet").value||0));const valued=rows.reduce((sum,r)=>{const match=source.find(x=>norm(x[$("productCodeCol").value]||"")===norm(r.code||"")||(!r.code&&norm(x[$("productNameCol").value]||"")===norm(r.name)));const unit=match?numberValue(match[selectedCostCol]):0;const shipment=shipmentColumns.filter(c=>!c.received).reduce((a,c)=>a+numberValue(r.shipmentValues?.[c.key]||0),0);return sum+unit*(r.trenque+r.consignacion+r.fabricacion+shipment);},0);inventoryStats.push(["Stock total valorizado",valued.toLocaleString("es-AR",{style:"currency",currency:"ARS"}),`Valorizado según «${selectedCostCol}»`]);}
+  if(selectedCostCol){
+    const source=activeRows(Number($("productSheet").value||0));
+    const valued=rows.reduce((sum,r)=>{
+      const match=source.find(x=>norm(x[$("productCodeCol").value]||"")===norm(r.code||"")||(!r.code&&norm(x[$("productNameCol").value]||"")===norm(r.name)));
+      const unit=match?numberValue(match[selectedCostCol]):0;
+      const shipment=shipmentColumns.filter(c=>!c.received).reduce((a,c)=>a+numberValue(r.shipmentValues?.[c.key]||0),0);
+      return sum+unit*(r.trenque+r.consignacion+r.fabricacion+shipment);
+    },0);
+    inventoryStats.push(["Stock total valorizado",valued.toLocaleString("es-AR",{style:"currency",currency:"ARS"}),`Valorizado automáticamente según «${selectedCostCol}»`]);
+  }
   $("inventoryStats").innerHTML=inventoryStats.map(([a,b,c])=>`<div class="stat"><span class="muted">${esc(a)}</span><strong>${esc(b)}</strong><small>${esc(c)}</small></div>`).join("");
-  const costCol=$("inventoryCostCol")?.value||"";
   const headers=["Producto","Código","Stock total","Trenque Lauquen","Consignación","En fabricación"];
-  if(costCol) headers.push("Costo / precio unitario","Stock valorizado");
+  if(selectedCostCol) headers.push("Costo / precio unitario","Stock valorizado");
   shipmentColumns.forEach(col=>headers.push(col.label));
   const body=rows.map(r=>{
     const shipmentTotal=shipmentColumns.filter(col=>!col.received).reduce((a,col)=>a+numberValue(r.shipmentValues?.[col.key]||0),0);
     const totalRow=r.trenque+r.consignacion+r.fabricacion+shipmentTotal;
     const cells=[`<td>${esc(r.name)}</td>`,`<td>${esc(r.code||"—")}</td>`,`<td><strong>${totalRow}</strong></td>`,`<td>${r.trenque}</td>`,`<td>${r.consignacion}</td>`,`<td>${r.fabricacion}</td>`];
+    if(selectedCostCol){
+      const src=activeRows(Number($("productSheet").value||0)).find(x=>norm(x[$("productCodeCol").value]||"")===norm(r.code||"") || (!r.code&&norm(x[$("productNameCol").value]||"")===norm(r.name)));
+      const unit=src?numberValue(src[selectedCostCol]):0;
+      cells.push(`<td>${unit.toLocaleString("es-AR",{style:"currency",currency:"ARS"})}</td>`,`<td><strong>${(unit*totalRow).toLocaleString("es-AR",{style:"currency",currency:"ARS"})}</strong></td>`);
+    }
     shipmentColumns.forEach(col=>cells.push(`<td>${numberValue(r.shipmentValues?.[col.key]||0)}</td>`));
-    if(costCol){const src=activeRows(Number($("productSheet").value||0)).find(x=>norm(x[$("productCodeCol").value]||"")===norm(r.code||"") || (!r.code&&norm(x[$("productNameCol").value]||"")===norm(r.name)));const unit=src?numberValue(src[costCol]):0;cells.push(`<td>${unit.toLocaleString("es-AR",{style:"currency",currency:"ARS"})}</td>`,`<td><strong>${(unit*totalRow).toLocaleString("es-AR",{style:"currency",currency:"ARS"})}</strong></td>`);}
     return '<tr>'+cells.join('')+'</tr>';
   }).join("");
   $("inventoryTable").innerHTML='<table data-width-key="inventory"><thead><tr>'+headers.map(h=>`<th>${esc(h)}</th>`).join("")+'</tr></thead><tbody>'+body+'</tbody></table>';
@@ -1444,7 +1472,6 @@ function renderInventory() {
   if(activeTab==="trazabilidad") renderTraceability();
   if(activeTab==="reposiciones") renderReplenishmentConfig();
 }
-
 function traceDataForProduct(row){
  const matches=l=>(norm(l.code||'')===norm(row.code||'') || (!row.code&&norm(l.product)===norm(row.name)));
  const used=(type,id)=> (book.ventasConsumos||[]).filter(m=>m.sourceType===type&&String(m.sourceId||'')===String(id||'')&&((row.code&&norm(m.code)===norm(row.code))||(!row.code&&norm(m.product)===norm(row.name)))).reduce((a,m)=>a+numberValue(m.quantity),0);
