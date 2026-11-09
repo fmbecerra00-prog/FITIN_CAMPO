@@ -54,8 +54,16 @@ header p {margin:6px 0 0;opacity:.8}
 .container {max-width:var(--content-width);margin:auto;padding:22px}
 .tabs,.toolbar {display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0}
 .tabs {margin-bottom:20px}
-.tabs button {background:#e5eaf5;color:#25324b}
-.tabs button.active {background:var(--primary);color:white}
+.tabs button {background:#e5eaf5;color:#25324b;border:1px solid #d7dfc4;font-weight:700;transition:background .15s,color .15s}
+.tabs button:nth-child(8n+1){background:#e4ebd2;color:#35451d}
+.tabs button:nth-child(8n+2){background:#d4dfb5;color:#34451b}
+.tabs button:nth-child(8n+3){background:#c2d19a;color:#293a13}
+.tabs button:nth-child(8n+4){background:#aebe78;color:#263510}
+.tabs button:nth-child(8n+5){background:#8fa45b;color:#fff}
+.tabs button:nth-child(8n+6){background:#718943;color:#fff}
+.tabs button:nth-child(8n+7){background:#596f2d;color:#fff}
+.tabs button:nth-child(8n){background:#465b20;color:#fff}
+.tabs button.active {background:#344b16!important;color:#fff!important;border-color:#344b16;box-shadow:0 2px 7px #344b1630}
 .toolbar input {flex:1;min-width:160px}
 .panel,.stat {background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:16px;min-width:0;box-shadow:0 4px 18px #17233a0b}
 .panel h2,.panel h3 {margin-top:0}
@@ -253,22 +261,14 @@ footer {text-align:center;color:var(--muted);padding:22px}
         <div><label>Stock en fabricación</label><select id="locFabricacion"></select></div>
         <div><label>Embarques (por fecha)</label><select id="locEmbarques"></select></div>
       </div>
+      <div class="design-grid no-print" style="margin:12px 0">
+        <div><label for="inventorySheetSelect">Hoja de registros para inventario</label><select id="inventorySheetSelect"></select></div>
+        <div><label for="inventoryCostCol">Columna de costo / precio unitario</label><select id="inventoryCostCol"></select></div>
+      </div>
       <div class="toolbar no-print"><button id="refreshInventoryBtn">Actualizar inventario</button></div>
       <div id="inventoryStats" class="grid"></div>
       <div id="inventoryTable" class="table-wrap"></div>
       </div><!-- /inventoryPrintArea -->
-    </div>
-    <div class="panel">
-      <h2>Disponibilidad por producto</h2>
-      <p class="muted">Elegí un producto y agregalo a la comparación. Podés sumar todos los productos que quieras; cada uno aparecerá en el gráfico para comparar sus existencias por ubicación.</p>
-      <div class="design-grid no-print">
-        <div><label>Producto para consultar</label><select id="availabilityProduct"></select></div>
-        <div style="display:flex;align-items:end"><button id="addAvailabilityBtn">Agregar a la comparación</button></div>
-        <div style="display:flex;align-items:end"><button id="clearAvailabilityBtn" class="secondary">Limpiar comparación</button></div>
-      </div>
-      <div id="availabilityChosen" class="toolbar"></div>
-      <div style="min-height:280px"><canvas id="availabilityChart" aria-label="Gráfico de disponibilidad por producto y ubicación"></canvas></div>
-      <p id="availabilityStatus" class="status"></p>
     </div>
     <div id="dashboardWidgets" class="widget-grid"></div>
   </section>
@@ -364,6 +364,18 @@ footer {text-align:center;color:var(--muted);padding:22px}
       <p class="muted">Consultá el recorrido y la distribución del stock en cada situación. Los datos se calculan junto con el stock general.</p>
       <div class="design-grid"><div><label for="traceProduct">Buscar producto</label><select id="traceProduct"></select></div></div>
       <div id="traceDetail" class="grid"><p class="muted">Elegí un producto para consultar su trazabilidad.</p></div>
+    </div>
+    <div class="panel">
+      <h2>Disponibilidad por producto</h2>
+      <p class="muted">Elegí un producto y agregalo a la comparación. Podés sumar todos los productos que quieras; cada uno aparecerá en el gráfico para comparar sus existencias por ubicación.</p>
+      <div class="design-grid no-print">
+        <div><label>Producto para consultar</label><select id="availabilityProduct"></select></div>
+        <div style="display:flex;align-items:end"><button id="addAvailabilityBtn">Agregar a la comparación</button></div>
+        <div style="display:flex;align-items:end"><button id="clearAvailabilityBtn" class="secondary">Limpiar comparación</button></div>
+      </div>
+      <div id="availabilityChosen" class="toolbar"></div>
+      <div style="min-height:280px"><canvas id="availabilityChart" aria-label="Gráfico de disponibilidad por producto y ubicación"></canvas></div>
+      <p id="availabilityStatus" class="status"></p>
     </div>
     <div class="panel">
       <h2>Reposiciones</h2>
@@ -925,17 +937,14 @@ async function startApp() {
 function allTabs() {
   return [
     {id:"dashboard",label:book.tabLabels.dashboard||"Inicio"},
-    {id:"records",label:book.tabLabels.records||"Registros"},
-    ...(isAdminUser() ? [
-      {id:"stock",label:book.tabLabels.stock||"Stock actual"},
-      {id:"solicitud",label:"Solicitud"}
-    ] : []),
+    {id:"trazabilidad",label:"Trazabilidad"},
+    ...(!PUBLIC_MODE ? [{id:"ventas",label:"Ventas"}] : []),
     {id:"consignacion",label:"Productos en Consignación"},
     {id:"pedidos",label:"Pedidos de fabricación"},
     {id:"embarques",label:"Embarques"},
-    {id:"trazabilidad",label:"Trazabilidad"},
     {id:"reposiciones",label:"Reposiciones"},
-    ...(!PUBLIC_MODE ? [{id:"ventas",label:"Ventas"}] : []),
+    {id:"records",label:book.tabLabels.records||"Registros"},
+    ...(isAdminUser() ? [{id:"stock",label:book.tabLabels.stock||"Stock actual"},{id:"solicitud",label:"Solicitud"}] : []),
     ...book.customTabs,
     ...(isAdminUser() ? [{id:"design",label:book.tabLabels.design||"Diseño de página"}] : [])
   ];
@@ -982,10 +991,30 @@ function showTab(id) {
   if(id==="consignacion") {renderEntryLines("cons");renderEntryTable("cons");}
   if(id==="pedidos") {renderEntryLines("pedido");renderEntryTable("pedido");}
   if(id==="embarques") {renderEntryLines("shipment");renderEntryTable("shipment");renderShipmentCards();}
-  if(id==="trazabilidad") renderTraceability();
+  if(id==="trazabilidad") {renderTraceability();renderAvailabilityOptions();}
   if(id==="reposiciones") renderReplenishmentConfig();
   if(id==="ventas") {renderSalesLines();renderSalesAllocations();renderSalesTable();}
   if(id==="design") {renderTabTitleEditor();renderWidgetEditor();renderColumnWidthTargets();renderColumnWidthEditor();renderLogoEditor();renderLogos();}
+}
+
+
+let recordsAutosaveTimer=null;
+function refreshDerivedViewsAfterRecordEdit(){
+  stampAvailabilityUpdate();
+  try{setupProductControls();}catch(e){console.warn("No se pudieron actualizar los selectores de productos",e);}
+  renderInventory();
+  if(activeTab==="records")renderRecords();
+  if(activeTab==="trazabilidad")renderTraceability();
+  if(activeTab==="ventas"){renderSalesLines();renderSalesAllocations();renderSalesTable();}
+  if(activeTab==="consignacion")renderEntryTable("cons");
+  if(activeTab==="pedidos")renderEntryTable("pedido");
+  if(activeTab==="embarques"){renderEntryTable("shipment");renderShipmentCards();}
+}
+function queueRecordsAutosave(){
+  if(PUBLIC_MODE||!currentUser)return;
+  clearTimeout(recordsAutosaveTimer);
+  message("recordsStatus","Cambios aplicados. Guardando automáticamente...");
+  recordsAutosaveTimer=setTimeout(async()=>{try{await saveBook();message("recordsStatus","Registros guardados automáticamente y vistas actualizadas.");}catch(e){message("recordsStatus","No se pudieron guardar automáticamente: "+e.message+". Usá Guardar registros para reintentar.",true);}},650);
 }
 
 /* REGISTROS */
@@ -1039,7 +1068,8 @@ function renderRecords() {
 
   $("recordsTable").querySelectorAll("[contenteditable]").forEach(td=>{
     td.onblur=()=>{
-      s.rows[Number(td.dataset.row)][td.dataset.col]=td.textContent.trim();stampAvailabilityUpdate();
+      s.rows[Number(td.dataset.row)][td.dataset.col]=td.textContent.trim();
+      refreshDerivedViewsAfterRecordEdit();queueRecordsAutosave();
     };
     td.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();td.blur();}};
   });
@@ -1047,7 +1077,7 @@ function renderRecords() {
   $("recordsTable").querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{
     if(confirm("¿Eliminar esta fila?")) {
       s.rows.splice(Number(b.dataset.del),1);
-      renderRecords();renderDashboard();
+      renderRecords();refreshDerivedViewsAfterRecordEdit();queueRecordsAutosave();
     }
   });
 }
@@ -1060,7 +1090,7 @@ $("addRowBtn").onclick=()=>{
     cols=[name.trim()];
   }
   const row={};cols.forEach(c=>row[c]="");
-  sheet().rows.push(row);renderRecords();
+  sheet().rows.push(row);renderRecords();refreshDerivedViewsAfterRecordEdit();queueRecordsAutosave();
 };
 $("addColumnBtn").onclick=()=>{
   const name=prompt("Nombre de la nueva columna:");
@@ -1068,7 +1098,7 @@ $("addColumnBtn").onclick=()=>{
   if(columns(sheet().rows).includes(name.trim())) {alert("La columna ya existe.");return;}
   if(!sheet().rows.length) sheet().rows.push({[name.trim()]:""});
   else sheet().rows.forEach(r=>r[name.trim()]="");
-  renderRecords();
+  renderRecords();refreshDerivedViewsAfterRecordEdit();queueRecordsAutosave();
 };
 $("deleteColumnBtn").onclick=()=>{
   const cols=columns(sheet().rows);
@@ -1079,23 +1109,23 @@ $("deleteColumnBtn").onclick=()=>{
   if(!cols.includes(name)){alert("No existe una columna con ese nombre. Copiá el nombre tal como aparece en la tabla.");return;}
   if(!confirm(`¿Eliminar la columna «${name}» y todos sus datos de esta hoja? Esta acción no se puede deshacer después de guardar.`)) return;
   sheet().rows.forEach(r=>delete r[name]);
-  renderRecords();renderDashboard();
-  message("recordsStatus",`Columna «${name}» eliminada. Presioná “Guardar registros” para guardar el cambio.`);
+  renderRecords();refreshDerivedViewsAfterRecordEdit();queueRecordsAutosave();
+  message("recordsStatus",`Columna «${name}» eliminada. Se guardará automáticamente.`);
 };
 $("newSheetBtn").onclick=()=>{
   const n=prompt("Nombre de la nueva hoja:");
   if(!n?.trim()) return;
   book.sheets.push({name:n.trim(),rows:[]});
-  book.active=book.sheets.length-1;renderAll();
+  book.active=book.sheets.length-1;renderAll();queueRecordsAutosave();
 };
 $("renameSheetBtn").onclick=()=>{
   const n=prompt("Nuevo nombre:",sheet().name);
-  if(n?.trim()) {sheet().name=n.trim();renderSheetSelect();setupProductControls();setupStockControls();}
+  if(n?.trim()) {sheet().name=n.trim();renderSheetSelect();setupProductControls();setupStockControls();queueRecordsAutosave();}
 };
 $("deleteSheetBtn").onclick=()=>{
   if(book.sheets.length<2) {alert("Debe quedar al menos una hoja.");return;}
   if(confirm("¿Eliminar esta hoja y sus registros?")) {
-    book.sheets.splice(book.active,1);book.active=0;renderAll();
+    book.sheets.splice(book.active,1);book.active=0;renderAll();queueRecordsAutosave();
   }
 };
 $("saveRecordsBtn").onclick=async()=>{
@@ -1244,6 +1274,7 @@ $("dashboardStockMetric").onchange=renderDashboard;
 function setupProductControls() {
   const c=book.productConfig||{};
   fillSheetSelect("productSheet",c.sheet||0);
+  const inventoryPicker=$("inventorySheetSelect");if(inventoryPicker){inventoryPicker.innerHTML=$("productSheet").innerHTML;inventoryPicker.value=String(c.sheet||0);}
   const cols=columns(activeRows($("productSheet").value));
   fillSelect("productNameCol",cols,c.name);fillSelect("productCodeCol",cols,c.code);
   fillSelect("productStockCol",cols,c.stock);fillSelect("productStockAltCol",cols,c.stockAlt);
@@ -1379,20 +1410,31 @@ function inventoryRows() {
   return rows;
 }
 function renderInventory() {
+  const sheetPicker=$("inventorySheetSelect");
+  if(sheetPicker){const old=sheetPicker.value;sheetPicker.innerHTML=book.sheets.map((sh,i)=>`<option value="${i}">${esc(sh.name)}</option>`).join("");sheetPicker.value=String(Math.min(Number(old||$("productSheet").value||0),book.sheets.length-1));if(!sheetPicker.dataset.bound){sheetPicker.dataset.bound="1";sheetPicker.onchange=()=>{$("productSheet").value=sheetPicker.value;book.productConfig.sheet=Number(sheetPicker.value);setupProductControls();};}}
+  const costPicker=$("inventoryCostCol");
+  const currentCols=columns(activeRows(Number($("productSheet").value||0)));
+  if(costPicker){const old=costPicker.value;costPicker.innerHTML='<option value="">— Sin valorización —</option>'+currentCols.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("");const suggested=old||guessCol(currentCols,["costo","coste","precio","valor unitario","costo unitario","precio unitario"]);if(currentCols.includes(suggested))costPicker.value=suggested;if(!costPicker.dataset.bound){costPicker.dataset.bound="1";costPicker.onchange=()=>renderInventory();}}
   const rows=inventoryRows();
   const shipmentColumns=rows.shipmentColumns||[];
   const total=rows.reduce((sum,r)=>sum+r.trenque+r.consignacion+r.fabricacion+shipmentColumns.filter(c=>!c.received).reduce((a,c)=>a+numberValue(r.shipmentValues?.[c.key]||0),0),0);
-  $("inventoryStats").innerHTML=[
+  const inventoryStats=[
     ["Total de productos ofrecidos",rows.length,"Productos únicos según nombre y código"],
     ["Stock total consolidado",total,"Trenque Lauquen + Consignación + En fabricación + embarques"]
-  ].map(([a,b,c])=>`<div class="stat"><span class="muted">${esc(a)}</span><strong>${esc(b)}</strong><small>${esc(c)}</small></div>`).join("");
-  const headers=["Producto","Código","Stock total","Demanda","Trenque Lauquen","Consignación","En fabricación"];
+  ];
+  const selectedCostCol=$("inventoryCostCol")?.value||"";
+  if(selectedCostCol){const source=activeRows(Number($("productSheet").value||0));const valued=rows.reduce((sum,r)=>{const match=source.find(x=>norm(x[$("productCodeCol").value]||"")===norm(r.code||"")||(!r.code&&norm(x[$("productNameCol").value]||"")===norm(r.name)));const unit=match?numberValue(match[selectedCostCol]):0;const shipment=shipmentColumns.filter(c=>!c.received).reduce((a,c)=>a+numberValue(r.shipmentValues?.[c.key]||0),0);return sum+unit*(r.trenque+r.consignacion+r.fabricacion+shipment);},0);inventoryStats.push(["Stock total valorizado",valued.toLocaleString("es-AR",{style:"currency",currency:"ARS"}),`Valorizado según «${selectedCostCol}»`]);}
+  $("inventoryStats").innerHTML=inventoryStats.map(([a,b,c])=>`<div class="stat"><span class="muted">${esc(a)}</span><strong>${esc(b)}</strong><small>${esc(c)}</small></div>`).join("");
+  const costCol=$("inventoryCostCol")?.value||"";
+  const headers=["Producto","Código","Stock total","Trenque Lauquen","Consignación","En fabricación"];
+  if(costCol) headers.push("Costo / precio unitario","Stock valorizado");
   shipmentColumns.forEach(col=>headers.push(col.label));
   const body=rows.map(r=>{
     const shipmentTotal=shipmentColumns.filter(col=>!col.received).reduce((a,col)=>a+numberValue(r.shipmentValues?.[col.key]||0),0);
     const totalRow=r.trenque+r.consignacion+r.fabricacion+shipmentTotal;
-    const cells=[`<td>${esc(r.name)}</td>`,`<td>${esc(r.code||"—")}</td>`,`<td><strong>${totalRow}</strong></td>`,`<td><strong>${r.demanda||0}</strong></td>`,`<td>${r.trenque}</td>`,`<td>${r.consignacion}</td>`,`<td>${r.fabricacion}</td>`];
+    const cells=[`<td>${esc(r.name)}</td>`,`<td>${esc(r.code||"—")}</td>`,`<td><strong>${totalRow}</strong></td>`,`<td>${r.trenque}</td>`,`<td>${r.consignacion}</td>`,`<td>${r.fabricacion}</td>`];
     shipmentColumns.forEach(col=>cells.push(`<td>${numberValue(r.shipmentValues?.[col.key]||0)}</td>`));
+    if(costCol){const src=activeRows(Number($("productSheet").value||0)).find(x=>norm(x[$("productCodeCol").value]||"")===norm(r.code||"") || (!r.code&&norm(x[$("productNameCol").value]||"")===norm(r.name)));const unit=src?numberValue(src[costCol]):0;cells.push(`<td>${unit.toLocaleString("es-AR",{style:"currency",currency:"ARS"})}</td>`,`<td><strong>${(unit*totalRow).toLocaleString("es-AR",{style:"currency",currency:"ARS"})}</strong></td>`);}
     return '<tr>'+cells.join('')+'</tr>';
   }).join("");
   $("inventoryTable").innerHTML='<table data-width-key="inventory"><thead><tr>'+headers.map(h=>`<th>${esc(h)}</th>`).join("")+'</tr></thead><tbody>'+body+'</tbody></table>';
