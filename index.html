@@ -82,7 +82,7 @@ body.records-active .records-only-toolbar {display:flex!important}
 .widget canvas {max-height:340px}
 #availabilityChart {width:100%;max-height:420px}
 #dashboardStockChart {width:100%!important;height:100%!important}
-.request-lines td,.request-lines th{vertical-align:top}.request-lines input,.request-lines select{min-width:110px}.request-lines td:nth-child(4){min-width:300px;width:34%}.request-product-picker{min-width:260px;max-width:520px}.request-product-picker input{width:100%;min-width:240px}.request-product-options{display:none;position:relative;max-height:220px;overflow:auto;background:#fff;border:1px solid var(--border);border-radius:8px;margin-top:5px;box-shadow:0 5px 14px #17233a18;z-index:20}.request-product-picker.open .request-product-options{display:block}.request-product-option{display:block;width:100%;text-align:left;white-space:normal;overflow-wrap:anywhere;background:#fff;color:var(--text);border:0;border-bottom:1px solid var(--border);border-radius:0;padding:9px 10px}.request-product-option:hover,.request-product-option:focus{background:#eef2e6}.request-product-empty{padding:10px;color:var(--muted)}.request-meta{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.shipment-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}.shipment-card{border:1px solid var(--border);border-radius:12px;padding:16px;background:var(--card);box-shadow:0 3px 10px #17233a0b}.shipment-card h3{margin:0 0 8px}.shipment-days{font-size:20px;font-weight:700;color:var(--primary);margin:8px 0}.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.form-grid>div{min-width:0}.form-grid input,.form-grid select{width:100%}.product-entry{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.product-entry select{min-width:230px;flex:1}.request-actions{white-space:nowrap}
+.request-lines td,.request-lines th{vertical-align:top}.request-lines input,.request-lines select{min-width:110px}.request-lines td:nth-child(4){min-width:300px;width:34%}.request-product-picker{min-width:260px;max-width:520px}.request-product-picker input{width:100%;min-width:240px}.request-product-options{display:none;position:relative;max-height:220px;overflow:auto;background:#fff;border:1px solid var(--border);border-radius:8px;margin-top:5px;box-shadow:0 5px 14px #17233a18;z-index:20}.request-product-picker.open .request-product-options{display:block}.request-product-option{display:block;width:100%;text-align:left;white-space:normal;overflow-wrap:anywhere;background:#fff;color:var(--text);border:0;border-bottom:1px solid var(--border);border-radius:0;padding:9px 10px}.request-product-option:hover,.request-product-option:focus{background:#eef2e6}.request-product-empty{padding:10px;color:var(--muted)}.request-lines select{min-width:220px}.request-lines input[readonly]{background:#f1f3f7;color:#263247;font-weight:600}.request-meta{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.shipment-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}.shipment-card{border:1px solid var(--border);border-radius:12px;padding:16px;background:var(--card);box-shadow:0 3px 10px #17233a0b}.shipment-card h3{margin:0 0 8px}.shipment-days{font-size:20px;font-weight:700;color:var(--primary);margin:8px 0}.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.form-grid>div{min-width:0}.form-grid input,.form-grid select{width:100%}.product-entry{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.product-entry select{min-width:230px;flex:1}.request-actions{white-space:nowrap}
 .request-cancelled td { text-decoration:line-through; color:#7b8494; background:#f0f2f6!important; }
 .request-cancelled td.request-actions, .request-cancelled td.request-actions * { text-decoration:none; }
 .request-cancelled-badge { display:inline-block; margin-left:6px; padding:3px 7px; border-radius:6px; background:#e3e6ec; color:#586174; font-size:12px; font-weight:700; text-decoration:none; }
@@ -290,8 +290,9 @@ footer {text-align:center;color:var(--muted);padding:22px}
         <span id="requestDateLabel" class="muted">La fecha y hora se asignan al guardar</span>
       </div>
       <div class="toolbar no-print">
-        <button id="addRequestLineBtn">Agregar producto</button>
-        <button id="saveRequestBtn">Guardar solicitud</button>
+        <button type="button" id="addRequestLineBtn">Agregar producto</button>
+        <button type="button" class="secondary" id="requestNewProductBtn">Crear producto y código</button>
+        <button type="button" id="saveRequestBtn">Guardar solicitud</button>
         <button id="cancelEditRequestBtn" class="secondary" style="display:none">Cancelar edición</button>
       </div>
       <p id="requestStatus" class="status" aria-live="polite"></p>
@@ -310,7 +311,7 @@ footer {text-align:center;color:var(--muted);padding:22px}
       <h2>Productos en Consignación</h2>
       <p class="muted">Cargá los productos, el cliente y la fecha prevista de entrega. La operación queda identificada automáticamente como “Productos en consignación”.</p>
       <div class="form-grid"><div><label for="consClient">Cliente</label><input id="consClient" placeholder="Nombre del cliente"></div><div><label for="consDate">Fecha de entrega</label><input id="consDate" type="date"></div></div>
-      <div class="toolbar"><button id="consAddLine">Agregar producto</button><button class="secondary" id="consNewProduct">Crear producto y código</button><button id="consSave">Registrar consignación</button></div>
+      <div class="toolbar"><button type="button" id="consAddLine">Agregar producto</button><button type="button" class="secondary" id="consNewProduct">Crear producto y código</button><button type="button" id="consSave">Registrar consignación</button></div>
       <div id="consLines" class="table-wrap"></div><p id="consStatus" class="status"></p>
     </div><div class="panel"><h2>Consignaciones registradas</h2><div id="consTable" class="table-wrap"></div></div>
     <div class="panel">
@@ -323,7 +324,7 @@ footer {text-align:center;color:var(--muted);padding:22px}
     <div class="panel">
       <h2>Pedidos de fabricación</h2><p class="muted">Elegí productos del desplegable o creá un producto nuevo con su código. La operación se registra como “Pedido de fabricación”.</p>
       <div class="form-grid"><div><label for="pedidoClient">Cliente</label><input id="pedidoClient" placeholder="Nombre del cliente"></div><div><label for="pedidoDate">Fecha del pedido</label><input id="pedidoDate" type="date"></div></div>
-      <div class="toolbar"><button id="pedidoAddLine">Agregar producto</button><button class="secondary" id="pedidoNewProduct">Crear producto y código</button><button id="pedidoSave">Registrar pedido</button></div>
+      <div class="toolbar"><button type="button" id="pedidoAddLine">Agregar producto</button><button type="button" class="secondary" id="pedidoNewProduct">Crear producto y código</button><button type="button" id="pedidoSave">Registrar pedido</button></div>
       <div id="pedidoLines" class="table-wrap"></div><p id="pedidoStatus" class="status"></p>
     </div><div class="panel"><h2>Pedidos registrados</h2><div id="pedidoTable" class="table-wrap"></div></div>
   </section>
@@ -331,7 +332,7 @@ footer {text-align:center;color:var(--muted);padding:22px}
     <div class="panel"><h2>Próximos embarques</h2><p class="muted">Avisos calculados automáticamente a partir de la fecha estimada de ingreso.</p><div id="shipmentCards" class="shipment-cards"></div></div>
     <div class="panel"><h2>Registrar embarque</h2><p class="muted">La fecha y hora de registro se asignan automáticamente al guardar.</p>
       <div class="form-grid"><div><label for="shipmentDate">Fecha estimada de ingreso</label><input id="shipmentDate" type="date"></div><div><label for="shipmentLabel">Identificación / referencia (opcional)</label><input id="shipmentLabel" placeholder="Ej. Embarque octubre 01"></div></div>
-      <div class="toolbar"><button id="shipmentAddLine">Agregar producto</button><button class="secondary" id="shipmentNewProduct">Crear producto y código</button><button id="shipmentSave">Registrar embarque</button></div>
+      <div class="toolbar"><button type="button" id="shipmentAddLine">Agregar producto</button><button type="button" class="secondary" id="shipmentNewProduct">Crear producto y código</button><button type="button" id="shipmentSave">Registrar embarque</button></div>
       <div id="shipmentLines" class="table-wrap"></div><p id="shipmentStatus" class="status"></p>
     </div><div class="panel"><h2>Embarques registrados</h2><div id="shipmentTable" class="table-wrap"></div></div>
   </section>
@@ -375,7 +376,7 @@ footer {text-align:center;color:var(--muted);padding:22px}
     <div class="panel">
       <h2>Productos vendidos y demanda</h2>
       <p class="muted">Verificá descripción, código, cantidad y precio unitario. El total de cada línea se calcula automáticamente.</p>
-      <div class="toolbar"><button id="salesAddLine" class="secondary" type="button">Agregar producto</button></div>
+      <div class="toolbar"><button id="salesAddLine" class="secondary" type="button">Agregar producto</button><button id="salesNewProduct" class="secondary" type="button">Crear producto y código</button></div>
       <div id="salesLines" class="table-wrap"></div>
     </div>
     <div class="panel">
@@ -1545,9 +1546,12 @@ function salesSelectedForSource(sourceKey,excludeLineId){return salesDraftLines.
 function renderSalesLines(){
  const box=$('salesLines');if(!box)return;
  if(!salesDraftLines.length)salesDraftLines=[salesNewLine()];
- box.innerHTML='<table class="request-lines"><thead><tr><th>Producto vendido</th><th>Código</th><th>Cantidad / Demanda</th><th>Precio unitario</th><th>Total</th><th></th></tr></thead><tbody>'+salesDraftLines.map(l=>`<tr><td><input data-sales-product="${l.id}" value="${esc(l.product)}" placeholder="Descripción del producto"></td><td><input data-sales-code="${l.id}" value="${esc(l.code)}" placeholder="Código"></td><td><input type="number" min="1" step="1" data-sales-qty="${l.id}" value="${l.quantity}"></td><td><input type="number" min="0" step="0.01" data-sales-price="${l.id}" value="${l.unitPrice}"></td><td><strong>${salesMoney(l.quantity*l.unitPrice)}</strong></td><td><button type="button" class="danger" data-sales-remove="${l.id}">Quitar</button></td></tr>`).join('')+'</tbody></table>';
- box.querySelectorAll('[data-sales-product]').forEach(el=>el.onchange=()=>{const l=salesDraftLines.find(x=>x.id===el.dataset.salesProduct);l.product=el.value.trim();const match=salesFindProduct(l);if(match){l.product=match.name;l.code=match.code||l.code;}l.allocations=[];renderSalesLines();renderSalesAllocations();});
- box.querySelectorAll('[data-sales-code]').forEach(el=>el.onchange=()=>{const l=salesDraftLines.find(x=>x.id===el.dataset.salesCode);l.code=el.value.trim();const match=salesFindProduct(l);if(match){l.product=match.name;l.code=match.code||l.code;}l.allocations=[];renderSalesLines();renderSalesAllocations();});
+ const catalog = buildRequestCatalog();
+ box.innerHTML='<table class="request-lines"><thead><tr><th>Producto vendido</th><th>Código</th><th>Cantidad / Demanda</th><th>Precio unitario</th><th>Total</th><th></th></tr></thead><tbody>'+salesDraftLines.map(l=>{
+   const selected = catalog.find(p => (l.code && norm(p.code)===norm(l.code)) || (!l.code && norm(p.name)===norm(l.product)));
+   return `<tr><td><select data-sales-product="${l.id}" aria-label="Elegir producto"><option value="">— Elegir producto —</option>${catalog.map(p=>`<option value="${esc(p.key)}" ${(selected?.key===p.key)?'selected':''}>${esc(p.name)}</option>`).join('')}</select></td><td><input data-sales-code="${l.id}" value="${esc(selected?.code||l.code)}" readonly placeholder="Código automático"></td><td><input type="number" min="1" step="1" data-sales-qty="${l.id}" value="${l.quantity}"></td><td><input type="number" min="0" step="0.01" data-sales-price="${l.id}" value="${l.unitPrice}"></td><td><strong>${salesMoney(l.quantity*l.unitPrice)}</strong></td><td><button type="button" class="danger" data-sales-remove="${l.id}">Quitar</button></td></tr>`;
+ }).join('')+'</tbody></table>';
+ box.querySelectorAll('[data-sales-product]').forEach(el=>el.onchange=()=>{const l=salesDraftLines.find(x=>x.id===el.dataset.salesProduct);const p=catalog.find(x=>x.key===el.value);l.product=p?.name||'';l.code=p?.code||'';l.allocations=[];renderSalesLines();renderSalesAllocations();});
  box.querySelectorAll('[data-sales-qty]').forEach(el=>el.onchange=()=>{const l=salesDraftLines.find(x=>x.id===el.dataset.salesQty);l.quantity=Math.max(1,Math.floor(Number(el.value)||1));renderSalesLines();renderSalesAllocations();});
  box.querySelectorAll('[data-sales-price]').forEach(el=>el.onchange=()=>{const l=salesDraftLines.find(x=>x.id===el.dataset.salesPrice);l.unitPrice=Math.max(0,numberValue(el.value));renderSalesLines();});
  box.querySelectorAll('[data-sales-remove]').forEach(el=>el.onclick=()=>{salesDraftLines=salesDraftLines.filter(x=>x.id!==el.dataset.salesRemove);renderSalesLines();renderSalesAllocations();});
@@ -1618,6 +1622,7 @@ async function registerSale(){
 }
 $('salesInvoicePdf')?.addEventListener('change',e=>{const f=e.target.files?.[0];if(f){if(f.type!=='application/pdf'&&!f.name.toLowerCase().endsWith('.pdf')){$('salesPdfStatus').textContent='El archivo debe ser PDF.';return;}readSalesPdf(f);}});
 $('salesAddLine')?.addEventListener('click',()=>{salesDraftLines.push(salesNewLine());renderSalesLines();renderSalesAllocations();});
+$('salesNewProduct')?.addEventListener('click',createManualProduct);
 $('salesDeliveryDate')?.addEventListener('change',renderSalesAllocations);
 $('salesRegisterBtn')?.addEventListener('click',registerSale);
 
@@ -1806,33 +1811,73 @@ let editingRequestId = null;
 let requestCatalog = [];
 const REQUEST_OPERATIONS = ["Consignación", "Fabricación", "Embarque"];
 function buildRequestCatalog() {
-  // Solicitud utiliza únicamente la hoja actualmente seleccionada en Registros.
-  // Así no se mezclan productos de otros Excel/hojas importados.
-  const si = Math.min(Math.max(0, Number(book.active) || 0), Math.max(0, (book.sheets||[]).length - 1));
-  const sh = (book.sheets||[])[si];
-  if (!sh) return [];
-  const rows = sh.rows || [];
-  const cols = columns(rows);
-  const findExact = names => cols.find(c => names.includes(String(c).trim().toLocaleLowerCase('es'))) || null;
-  const nameCol = findExact(['descripción','descripcion']);
-  const codeCol = findExact(['código','codigo']);
+  // Catálogo compartido por solicitudes, consignaciones, fabricación, embarques y ventas.
+  // Busca productos en TODAS las hojas importadas y admite encabezados habituales de Excel.
+  const sheets = Array.isArray(book.sheets) ? book.sheets : [];
+  const cfg = book.productConfig || {};
+  const nameAliases = [
+    'producto','nombre producto','nombre del producto','descripcion','descripcion producto',
+    'descripcion del producto','articulo','articulo','item','material'
+  ];
+  const codeAliases = ['codigo','codigo producto','codigo del producto','cod producto','cod','sku','id producto'];
+  const findColumn = (cols, aliases, configured='') => {
+    if (configured && cols.includes(configured)) return configured;
+    const normalized = cols.map(c => ({raw:c,n:norm(c)}));
+    // Primero coincidencia exacta para evitar confundir "Código" con otras columnas.
+    for (const alias of aliases) {
+      const found = normalized.find(x => x.n === norm(alias));
+      if (found) return found.raw;
+    }
+    // Después coincidencia parcial para encabezados extendidos.
+    for (const alias of aliases) {
+      const found = normalized.find(x => x.n.includes(norm(alias)));
+      if (found) return found.raw;
+    }
+    return '';
+  };
+
   const items = [];
-  if (nameCol) rows.forEach((row, ri) => {
-    const name = String(row[nameCol] ?? '').trim();
-    if (!name) return;
-    const code = codeCol ? String(row[codeCol] ?? '').trim() : '';
-    const key = `${si}|${ri}|${norm(name)}|${norm(code)}`;
-    if (!items.some(x => x.key === key)) items.push({key,name,code,sheet:si,row:ri,sheetName:sh.name||`Hoja ${si+1}`});
+  sheets.forEach((sh, si) => {
+    const rows = Array.isArray(sh?.rows) ? sh.rows : [];
+    const cols = columns(rows);
+    if (!cols.length) return;
+    const isConfiguredSheet = Number(cfg.sheet) === si;
+    const nameCol = findColumn(cols, nameAliases, isConfiguredSheet ? cfg.name : '');
+    const codeCol = findColumn(cols, codeAliases, isConfiguredSheet ? cfg.code : '');
+    if (!nameCol) return;
+
+    rows.forEach((row, ri) => {
+      const name = String(row?.[nameCol] ?? '').trim();
+      if (!name) return;
+      const code = codeCol ? String(row?.[codeCol] ?? '').trim() : '';
+      // Se conserva una clave estable por hoja/fila para que cada selección sea inequívoca.
+      const key = `${si}|${ri}|${norm(name)}|${norm(code)}`;
+      if (!items.some(x => norm(x.name) === norm(name) && norm(x.code) === norm(code))) {
+        items.push({key,name,code,sheet:si,row:ri,sheetName:sh.name||`Hoja ${si+1}`});
+      }
+    });
   });
-  (book.productosManuales||[]).forEach((p,pi)=>{ const key='manual|'+p.id; if(!items.some(x=>norm(x.name)===norm(p.name)&&norm(x.code)===norm(p.code))) items.push({key,name:p.name,code:p.code||'',sheet:-1,row:pi,sheetName:'Productos creados'}); });
+
+  (Array.isArray(book.productosManuales) ? book.productosManuales : []).forEach((p,pi) => {
+    const name = String(p?.name || '').trim();
+    const code = String(p?.code || '').trim();
+    if (!name) return;
+    if (!items.some(x => norm(x.name) === norm(name) && norm(x.code) === norm(code))) {
+      items.push({key:'manual|'+(p.id || pi),name,code,sheet:-1,row:pi,sheetName:'Productos creados'});
+    }
+  });
+
   return items.sort((a,b) => a.name.localeCompare(b.name,'es') || a.code.localeCompare(b.code,'es'));
 }
 function requestProductOptions(selectedKey, query="") {
-  requestCatalog=buildRequestCatalog();
-  const q=norm(query);
-  const filtered=requestCatalog.map((p,i)=>({...p,index:i})).filter(p=>!q||norm([p.name,p.code,p.sheetName].join(" ")).includes(q));
-  if(!filtered.length) return '<div class="request-product-empty">No se encontraron productos. Probá con otra palabra.</div>';
-  return filtered.map(p=>`<button type="button" class="request-product-option" data-request-pick="${p.index}"><strong>${esc(p.name)}</strong>${p.code?' · Código: '+esc(p.code):''}${p.sheetName?' <span class="muted">· Hoja: '+esc(p.sheetName)+'</span>':''}</button>`).join("");
+  requestCatalog = buildRequestCatalog();
+  const q = norm(query);
+  const filtered = requestCatalog.map((p,i)=>({...p,index:i}))
+    .filter(p => !q || norm([p.name,p.code,p.sheetName].join(" ")).includes(q));
+  if (!filtered.length) return '<div class="request-product-empty">No se encontraron productos. Podés usar “Crear producto y código” para incorporarlo.</div>';
+  return filtered.map(p =>
+    `<button type="button" class="request-product-option" data-request-pick="${p.index}"><strong>${esc(p.name)}</strong>${p.code?' · Código: '+esc(p.code):''}${p.sheetName?' <span class="muted">· '+esc(p.sheetName)+'</span>':''}</button>`
+  ).join("");
 }
 function addRequestLine(line={operation:"Fabricación",productKey:"",code:"",quantity:1}) {
   requestDraftLines.push({...line,id:line.id||uid()});
@@ -1988,6 +2033,7 @@ async function saveRequest() {
   finally {$('saveRequestBtn').disabled=false;}
 }
 $("addRequestLineBtn").onclick=()=>addRequestLine();
+$("requestNewProductBtn")?.addEventListener("click",createManualProduct);
 $("saveRequestBtn").onclick=saveRequest;
 $("cancelEditRequestBtn").onclick=resetRequestEditor;
 $("requestSearch").oninput=renderRequestsTable;
@@ -2001,22 +2047,76 @@ const ENTRY_CONFIG={
 const entryDrafts={cons:[{productKey:'',product:'',code:'',quantity:1}],pedido:[{productKey:'',product:'',code:'',quantity:1}],shipment:[{productKey:'',product:'',code:'',quantity:1}]};
 function catalogForEntry(){return buildRequestCatalog();}
 function renderEntryLines(type){
- const cfg=ENTRY_CONFIG[type], box=$(cfg.linesId); if(!box)return; const products=catalogForEntry(); const lines=entryDrafts[type];
- let html='<table class="request-lines"><thead><tr><th>Producto</th><th>Código</th><th>Cantidad</th><th>Acción</th></tr></thead><tbody>';
- lines.forEach((l,i)=>{const chosen=products.find(p=>p.key===l.productKey); html+=`<tr><td><select data-entry-product="${type}:${i}"><option value="">Elegir producto…</option>${products.map(p=>`<option value="${esc(p.key)}" ${p.key===l.productKey?'selected':''}>${esc(p.name)}${p.code?' · '+esc(p.code):''}</option>`).join('')}</select></td><td><input readonly value="${esc(chosen?.code||l.code||'')}" aria-label="Código"></td><td><input type="number" min="1" step="1" value="${Math.max(1,Number(l.quantity)||1)}" data-entry-qty="${type}:${i}" aria-label="Cantidad"></td><td><button class="danger" data-entry-remove="${type}:${i}">Quitar</button></td></tr>`;});
- box.innerHTML=html+'</tbody></table>';
- box.querySelectorAll('[data-entry-product]').forEach(el=>el.onchange=()=>{const [t,ix]=el.dataset.entryProduct.split(':');const l=entryDrafts[t][Number(ix)],p=products.find(x=>x.key===el.value);l.productKey=p?.key||'';l.product=p?.name||'';l.code=p?.code||'';renderEntryLines(t);});
- box.querySelectorAll('[data-entry-qty]').forEach(el=>el.onchange=()=>{const [t,ix]=el.dataset.entryQty.split(':');entryDrafts[t][Number(ix)].quantity=Math.max(1,Math.floor(Number(el.value)||1));el.value=entryDrafts[t][Number(ix)].quantity;});
- box.querySelectorAll('[data-entry-remove]').forEach(el=>el.onclick=()=>{const [t,ix]=el.dataset.entryRemove.split(':');entryDrafts[t].splice(Number(ix),1);if(!entryDrafts[t].length)entryDrafts[t].push({productKey:'',product:'',code:'',quantity:1});renderEntryLines(t);});
+ const cfg = ENTRY_CONFIG[type], box = $(cfg.linesId);
+ if (!box) return;
+ const products = catalogForEntry();
+ const lines = entryDrafts[type] || (entryDrafts[type] = [{productKey:'',product:'',code:'',quantity:1}]);
+ let html = '<table class="request-lines"><thead><tr><th>Producto</th><th>Código</th><th>Cantidad</th><th>Acción</th></tr></thead><tbody>';
+ lines.forEach((l,i) => {
+   const chosen = products.find(p => p.key === l.productKey) || products.find(p => p.name === l.product && p.code === l.code);
+   html += `<tr>
+     <td><select data-entry-product="${type}:${i}" aria-label="Elegir producto">
+       <option value="">— Elegir producto —</option>
+       ${products.map(p => `<option value="${esc(p.key)}" ${p.key === l.productKey || (chosen && p.key === chosen.key) ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
+     </select></td>
+     <td><input readonly value="${esc(chosen?.code || '')}" aria-label="Código del producto" placeholder="Se completa al elegir"></td>
+     <td><input type="number" min="1" step="1" value="${Math.max(1,Math.floor(Number(l.quantity)||1))}" data-entry-qty="${type}:${i}" aria-label="Cantidad"></td>
+     <td><button type="button" class="danger" data-entry-remove="${type}:${i}">Quitar</button></td>
+   </tr>`;
+ });
+ box.innerHTML = html + '</tbody></table>';
+ box.querySelectorAll('[data-entry-product]').forEach(el => el.addEventListener('change', () => {
+   const [t,ix] = el.dataset.entryProduct.split(':');
+   const line = entryDrafts[t][Number(ix)];
+   const product = products.find(p => p.key === el.value);
+   line.productKey = product?.key || '';
+   line.product = product?.name || '';
+   line.code = product?.code || '';
+   renderEntryLines(t);
+ }));
+ box.querySelectorAll('[data-entry-qty]').forEach(el => el.addEventListener('change', () => {
+   const [t,ix] = el.dataset.entryQty.split(':');
+   entryDrafts[t][Number(ix)].quantity = Math.max(1,Math.floor(Number(el.value)||1));
+   el.value = entryDrafts[t][Number(ix)].quantity;
+ }));
+ box.querySelectorAll('[data-entry-remove]').forEach(el => el.addEventListener('click', () => {
+   const [t,ix] = el.dataset.entryRemove.split(':');
+   entryDrafts[t].splice(Number(ix),1);
+   if (!entryDrafts[t].length) entryDrafts[t].push({productKey:'',product:'',code:'',quantity:1});
+   renderEntryLines(t);
+ }));
 }
 function addEntryLine(type){entryDrafts[type].push({productKey:'',product:'',code:'',quantity:1});renderEntryLines(type);}
 async function createManualProduct(){
- const name=prompt('Descripción del producto nuevo:'); if(!name||!name.trim())return;
- const code=prompt('Código del producto (podés dejarlo vacío):')||'';
- book.productosManuales=book.productosManuales||[];
- const exists=book.productosManuales.find(p=>norm(p.name)===norm(name)&&norm(p.code)===norm(code));
- if(!exists)book.productosManuales.push({id:uid(),name:name.trim(),code:code.trim(),createdAt:new Date().toISOString()});
- try{await saveBook();['cons','pedido','shipment'].forEach(renderEntryLines);message('consStatus','Producto disponible en los desplegables.',false);message('pedidoStatus','Producto disponible en los desplegables.',false);message('shipmentStatus','Producto disponible en los desplegables.',false);}catch(e){alert('No se pudo guardar el producto: '+e.message);}
+ const rawName = prompt('Descripción del producto nuevo:');
+ if (rawName === null) return;
+ const name = rawName.trim();
+ if (!name) { alert('Ingresá la descripción del producto.'); return; }
+ const rawCode = prompt('Código del producto:');
+ if (rawCode === null) return;
+ const code = rawCode.trim();
+ book.productosManuales = Array.isArray(book.productosManuales) ? book.productosManuales : [];
+ const exists = book.productosManuales.find(p => norm(p.name) === norm(name) || (code && norm(p.code) === norm(code)));
+ if (exists) {
+   alert('Ya existe un producto con esa descripción o código. Revisá el catálogo antes de duplicarlo.');
+   return;
+ }
+ const product = {id:uid(),name,code,createdAt:new Date().toISOString(),createdBy:currentUser?.email||'Usuario'};
+ book.productosManuales.push(product);
+ try {
+   await saveBook();
+   requestCatalog = buildRequestCatalog();
+   ['cons','pedido','shipment'].forEach(renderEntryLines);
+   if (typeof renderRequestLines === 'function' && requestDraftLines.length) renderRequestLines();
+   if (typeof renderSalesLines === 'function' && Array.isArray(salesDraftLines)) renderSalesLines();
+   ['consStatus','pedidoStatus','shipmentStatus','requestStatus'].forEach(id => {
+     const el = $(id);
+     if (el) message(id, `Producto “${name}”${code ? ' · código '+code : ''} creado y disponible en los desplegables.`, false);
+   });
+ } catch(e) {
+   book.productosManuales = book.productosManuales.filter(p => p.id !== product.id);
+   alert('No se pudo guardar el producto en la base de datos: ' + (e?.message || e));
+ }
 }
 function formatDateOnly(value){if(!value)return '—';const d=new Date(value+'T12:00:00');return Number.isNaN(d.getTime())?value:d.toLocaleDateString('es-AR');}
 async function saveEntry(type){
@@ -2073,7 +2173,7 @@ function renderConsignmentMatrix(){
     number:String(rec.number||'')
   }));
   const header='<tr><th class="cons-matrix-fixed">Producto</th><th class="cons-matrix-fixed">Código</th>'+
-    columns.map(c=>`<th class="cons-matrix-client">${esc(c.client)}<small>${esc(c.date)}${c.number?' · '+esc(c.number):''}</small></th>`).join('')+'</tr>';
+    columns.map(c=>`<th class="cons-matrix-client">${esc(c.client)}<small>Fecha de consignación: ${esc(c.date)}${c.number?' · '+esc(c.number):''}</small></th>`).join('')+'</tr>';
   const rows=[...products.values()].sort((a,b)=>a.name.localeCompare(b.name,'es')||a.code.localeCompare(b.code,'es'));
   const body=rows.map(item=>'<tr><td>'+esc(item.name||'—')+'</td><td>'+esc(item.code||'—')+'</td>'+
     columns.map(c=>`<td class="cons-matrix-qty">${numberValue(item.quantities[c.key]||0)||'—'}</td>`).join('')+'</tr>').join('');
