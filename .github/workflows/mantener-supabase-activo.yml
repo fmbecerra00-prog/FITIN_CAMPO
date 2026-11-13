@@ -1,0 +1,44 @@
+# Mantiene activo el proyecto de Supabase de FITIN CAMPO (plan gratuito).
+# Todos los días hace una consulta pequeña a la base de datos para que Supabase
+# no lo pause por inactividad. No modifica ningún dato.
+#
+# Dónde va: en el repositorio de la página, en la ruta
+#   .github/workflows/mantener-supabase-activo.yml
+#
+# Si un día falla (por ejemplo, porque el proyecto ya está pausado),
+# GitHub te manda un correo avisando.
+
+name: Mantener Supabase activo
+
+on:
+  schedule:
+    - cron: "23 13 * * *"   # todos los días a las 10:23 hora de Argentina
+  workflow_dispatch:        # botón "Run workflow" para probarlo a mano
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Consultar la base de datos
+        env:
+          # Son los mismos datos públicos que ya están en index.html (no son secretos).
+          SUPABASE_URL: https://jgyeckanfjrqdfvinoaj.supabase.co
+          SUPABASE_KEY: sb_publishable_lLv-CsOrjj-weMWJgM2QHw_LNaiA4SW
+        run: |
+          for intento in 1 2 3; do
+            codigo=$(curl -s -o respuesta.txt -w "%{http_code}" --max-time 30 \
+              "$SUPABASE_URL/rest/v1/app_state?select=id&limit=1" \
+              -H "apikey: $SUPABASE_KEY")
+            echo "Intento $intento: respuesta HTTP $codigo"
+            if [ "$codigo" = "200" ]; then
+              echo "Supabase está activo."
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "Supabase no respondió bien. Si está pausado, entrá al panel y tocá 'Resume project'."
+          cat respuesta.txt
+          exit 1
