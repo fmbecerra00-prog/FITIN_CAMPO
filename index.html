@@ -85,7 +85,17 @@ header p {margin:6px 0 0;opacity:.8}
 #inventoryTable::-webkit-scrollbar-track {background:#eef0ea}
 table {width:100%;border-collapse:collapse;background:var(--card)}
 th,td {padding:10px 12px;text-align:left;border-bottom:1px solid var(--border)}
-th {background:var(--header);color:white;white-space:normal;overflow-wrap:anywhere;word-break:normal;line-height:1.3;vertical-align:middle;padding:16px 12px;min-height:64px}
+th {background:var(--header);color:white;white-space:normal;overflow-wrap:normal;word-break:normal;hyphens:none;line-height:1.3;vertical-align:middle;padding:16px 12px;min-height:64px}
+/* Tablas: cada columna toma el ancho que necesita su contenido; si la tabla no entra, aparecen barras de desplazamiento */
+.table-wrap {max-height:75vh;overflow:auto;-webkit-overflow-scrolling:touch}
+.table-wrap > table {width:max-content;min-width:100%}
+.table-wrap th {min-width:90px;position:sticky;top:0;z-index:2}
+.table-wrap td {white-space:nowrap}
+.table-wrap td input,.table-wrap td select {min-width:90px}
+.table-wrap::-webkit-scrollbar {width:12px;height:12px}
+.table-wrap::-webkit-scrollbar-thumb {background:#9aa58a;border-radius:8px;border:2px solid #eef0ea}
+.table-wrap::-webkit-scrollbar-track {background:#eef0ea}
+.table-wrap::-webkit-scrollbar-corner {background:#eef0ea}
 #inventoryTable th {min-width:125px;height:78px;padding:18px 12px}
 #inventoryTable th:last-child {min-width:150px}
 td[contenteditable=true]:focus {outline:2px solid var(--primary)}
@@ -138,6 +148,10 @@ footer {text-align:center;color:var(--muted);padding:22px}
  #stockPrintArea table {width:100%;border-collapse:collapse}
  #stockPrintArea th,#stockPrintArea td {background:white!important;color:black!important;border:1px solid #888;padding:6px}
  .no-print {display:none!important}
+ .table-wrap {max-height:none!important;overflow:visible!important}
+ .table-wrap th {position:static!important}
+ .table-wrap > table {width:100%!important;min-width:0!important}
+ .table-wrap td {white-space:normal!important}
  @page {size:A4 portrait;margin:15mm}
 }
 
@@ -2964,13 +2978,13 @@ function applyColumnWidths(table,key,cols) {
   if(!table)return;
   table.dataset.widthKey=key;
   const widths=book.design?.columnWidths?.[key]||{};
-  const any=cols.some(c=>Number(widths[c])>=40);
-  table.style.tableLayout=any?"fixed":"auto";
+  // Ancho automático según el contenido. Un ancho guardado en Diseño funciona como ancho mínimo de esa columna,
+  // así ninguna columna se angosta tanto que el texto quede letra por letra.
+  table.style.tableLayout="auto";
   let cg=table.querySelector("colgroup"); if(cg)cg.remove();
-  cg=document.createElement("colgroup");
-  cols.forEach(col=>{const c=document.createElement("col");const w=Number(widths[col]);if(w>=40&&w<=900)c.style.width=w+"px";cg.appendChild(c);});
-  table.insertBefore(cg,table.firstChild);
-  table.querySelectorAll("th,td").forEach(cell=>{cell.style.overflowWrap="anywhere";cell.style.minWidth="0";});
+  const ths=Array.from(table.querySelectorAll("thead th"));
+  cols.forEach((col,i)=>{const th=ths[i];if(!th)return;const w=Number(widths[col]);th.style.minWidth=(w>=40&&w<=900)?w+"px":"";});
+  table.querySelectorAll("th,td").forEach(cell=>{cell.style.overflowWrap="normal";});
 }
 function previewColumnWidths() {
   document.querySelectorAll("table[data-width-key]").forEach(table=>{
