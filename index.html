@@ -430,7 +430,6 @@ footer {text-align:center;color:var(--muted);padding:22px}
         <div><label for="salesAddress">Domicilio comercial</label><input id="salesAddress" placeholder="Calle, número, localidad"></div>
         <div><label for="salesSaleCond">Condición de venta</label><input id="salesSaleCond" placeholder="Contado"></div>
         <div><label for="salesInvoiceTotal">Importe total ($)</label><input id="salesInvoiceTotal" type="number" min="0" step="0.01" placeholder="292820,00"></div>
-        <div><label for="salesDeliveryDate">Fecha de entrega del pedido</label><input id="salesDeliveryDate" type="date"></div>
       </div>
       <p id="salesPdfStatus" class="status" aria-live="polite"></p>
       <details><summary>Texto leído del PDF (para revisar)</summary><div id="salesPdfText" class="sales-text-preview">Todavía no se cargó una factura.</div></details>
@@ -444,7 +443,7 @@ footer {text-align:center;color:var(--muted);padding:22px}
     </div>
     <div class="panel">
       <h2>Asignación del stock para esta venta</h2>
-      <p class="muted">Para cada producto se muestran las existencias disponibles por origen. Podés combinar varios orígenes. Los embarques pendientes solo se ofrecen si su fecha estimada de ingreso es igual o anterior a la fecha de entrega.</p>
+      <p class="muted">Para cada producto se muestran las existencias disponibles por origen. Podés combinar varios orígenes. Los embarques pendientes muestran su fecha estimada de ingreso.</p>
       <div id="salesAllocations"></div>
       <p id="salesAllocationStatus" class="status" aria-live="polite"></p>
       <div class="toolbar"><button id="salesRegisterBtn" type="button">Registrar venta y descontar stock</button></div>
@@ -452,7 +451,7 @@ footer {text-align:center;color:var(--muted);padding:22px}
     </div>
     <div class="panel">
       <h2>Registro de ventas</h2>
-      <p class="muted">Cada registro conserva número, fecha y hora de carga, comprobante (punto de venta, número y fecha de emisión), datos del cliente (CUIT, razón social, condición frente al IVA, domicilio y condición de venta), fecha de entrega, detalle de productos, precios, importe total y distribución de stock.</p>
+      <p class="muted">Cada registro conserva número, fecha y hora de carga, comprobante (punto de venta, número y fecha de emisión), datos del cliente (CUIT, razón social, condición frente al IVA, domicilio y condición de venta), detalle de productos, precios, importe total y distribución de stock.</p>
       <div id="salesTable" class="table-wrap"></div>
     </div>
   </section>
@@ -1740,8 +1739,19 @@ function salesMatchCatalog(code,desc){
 function salesParseAfip(text){
  const out={pos:'',compNro:'',invoiceDate:'',cuit:'',client:'',ivaCond:'',address:'',saleCond:'',invoiceTotal:0,lines:[]};
  const get=(src,re)=>{const m=String(src||'').match(re);return m?m[1].replace(/\s+/g,' ').trim():'';};
- out.pos=get(text,/Punto\s+de\s+Venta\s*:?\s*(\d{1,5})/i);
- out.compNro=get(text,/Comp\.?\s*N(?:ro|°|º)?\.?\s*:?\s*(\d{1,8})/i);
+ // Punto de venta (4-5 dígitos) y número de comprobante (8 dígitos). El PDF puede traer las etiquetas
+ // y los valores en distinto orden ("Punto de Venta: Comp. Nro: 00004 00000065"), por eso se prueban varias formas.
+ const COMP='Comp\\.?\\s*N(?:ro|°|º)?\\.?\\s*:?\\s*';
+ const both=String(text||'').match(new RegExp('Punto\\s+de\\s+Venta\\s*:?\\s*(?:'+COMP+')?(\\d{1,5})\\s+(?:'+COMP+')?(\\d{6,8})\\b','i'));
+ if(both){out.pos=both[1];out.compNro=both[2];}
+ else{
+  const pair=String(text||'').match(/\b(\d{4,5})\s+(\d{8})\b/);
+  if(pair){out.pos=pair[1];out.compNro=pair[2];}
+  else{
+   out.pos=get(text,/Punto\s+de\s+Venta\s*:?[\s\S]{0,40}?\b(\d{4,5})\b(?![\/.-]\d)/i);
+   out.compNro=get(text,new RegExp(COMP+'[\\s\\S]{0,40}?\\b(\\d{8})\\b','i'));
+  }
+ }
  out.invoiceDate=salesDateISO(get(text,/Fecha\s+de\s+Emisi[oó]n\s*:?\s*(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/i));
  out.invoiceTotal=numberValue(get(text,/Importe\s+Total\s*:?\s*\$?\s*([\d.,]+)/i));
  const lines=String(text||'').split(/\r?\n/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
@@ -1841,7 +1851,6 @@ async function readSalesPdf(file){
   fill('salesPos',afip.pos);fill('salesCompNro',afip.compNro);fill('salesCuit',afip.cuit);
   fill('salesClient',afip.client||parsed.client);fill('salesIvaCond',afip.ivaCond);fill('salesAddress',afip.address);fill('salesSaleCond',afip.saleCond);
   fill('salesInvoiceDate',afip.invoiceDate||parsed.invoiceDate);fill('salesInvoiceTotal',afip.invoiceTotal?afip.invoiceTotal.toFixed(2):'');
-  if(parsed.deliveryDate&&!$('salesDeliveryDate').value)$('salesDeliveryDate').value=parsed.deliveryDate;
   parsed.lines=afip.lines;
   if(parsed.lines.length)salesDraftLines=parsed.lines;
   else if(!salesDraftLines.length)salesDraftLines=[salesNewLine()];
@@ -1853,7 +1862,7 @@ function salesLedgerUsed(type,sourceId,line){return (book.ventasConsumos||[]).fi
 function salesLineMatches(a,b){return (a.code&&b.code&&norm(a.code)===norm(b.code))||(!a.code&&!b.code&&norm(a.product)===norm(b.product));}
 function salesSourceOptions(line){
  const row=salesFindProduct(line);if(!row)return [];
- const delivery=$('salesDeliveryDate').value;const options=[];
+ const options=[];
  options.push({key:'trenque:',sourceType:'trenque',sourceId:'',label:'Stock Trenque Lauquen',dateLabel:'Disponible actualmente',available:Math.max(0,row.trenque)});
  let consRecNet=0;
  (book.consignaciones||[]).forEach(rec=>(rec.lines||[]).filter(l=>salesLineMatches(line,l)).forEach(l=>{const qty=Math.max(0,numberValue(l.quantity)-salesLedgerUsed('consignacion',rec.id,line));consRecNet+=qty;if(qty>0)options.push({key:'consignacion:'+rec.id,sourceType:'consignacion',sourceId:rec.id,label:'Consignación · '+(rec.client||'Cliente sin identificar')+' · '+(rec.number||''),dateLabel:rec.date?'Fecha: '+formatDateOnly(rec.date):'Fecha no informada',available:qty});}));
@@ -1863,8 +1872,8 @@ function salesSourceOptions(line){
  const legacyFab=Math.max(0,row.fabricacion-fabRecNet);options.push({key:'fabricacion_legacy:',sourceType:'fabricacion',sourceId:'legacy',label:'Fabricación · saldo importado',dateLabel:'Sin detalle de orden',available:legacyFab});
  let shipmentOptions=0;
  (book.embarques||[]).filter(rec=>!(rec.receivedAt||rec.received)).forEach(rec=>{
-   const eta=rec.date||rec.estimatedDate||'';const eligible=!!delivery&&!!eta&&eta<=delivery;
-   (rec.lines||[]).filter(l=>salesLineMatches(line,l)).forEach(l=>{const qty=Math.max(0,numberValue(l.quantity)-salesLedgerUsed('shipment',rec.id,line));shipmentOptions++;options.push({key:'shipment:'+rec.id,sourceType:'shipment',sourceId:rec.id,label:'Embarque · '+(rec.label||rec.number||'Sin referencia'),dateLabel:eta?'Ingreso estimado: '+formatDateOnly(eta):'Fecha de ingreso no informada',available:qty,eligible,dateWarning:!delivery?'Completá la fecha de entrega para evaluar este embarque':!eta?'No se puede confirmar si llega a tiempo':eligible?'Llega antes de la entrega':'No llega antes de la fecha de entrega'});});
+   const eta=rec.date||rec.estimatedDate||'';const eligible=true;
+   (rec.lines||[]).filter(l=>salesLineMatches(line,l)).forEach(l=>{const qty=Math.max(0,numberValue(l.quantity)-salesLedgerUsed('shipment',rec.id,line));shipmentOptions++;options.push({key:'shipment:'+rec.id,sourceType:'shipment',sourceId:rec.id,label:'Embarque · '+(rec.label||rec.number||'Sin referencia'),dateLabel:eta?'Ingreso estimado: '+formatDateOnly(eta):'Fecha de ingreso no informada',available:qty,eligible,dateWarning:''});});
  });
  if(!shipmentOptions)options.push({key:'shipment:none',sourceType:'shipment',sourceId:'',label:'Embarques provenientes',dateLabel:'No hay embarques pendientes para este producto',available:0,eligible:false,dateWarning:'Sin disponibilidad'});
  return options;
@@ -1898,7 +1907,7 @@ function renderSalesAllocations(){
    return `<div class="sales-source"><div class="sales-source-head"><input type="checkbox" data-sales-source-check="${line.id}|${esc(o.key)}" ${qty>0?'checked':''} ${(o.eligible===false||available<=0)&&qty===0?'disabled':''}><span>${esc(o.label)}</span></div><small>${esc(o.dateLabel)} · Disponible: <strong>${available}</strong>${o.dateWarning?' · <strong>'+esc(o.dateWarning)+'</strong>':''}</small><label>Cantidad a consumir</label><input type="number" min="0" max="${available}" step="1" data-sales-source-qty="${line.id}|${esc(o.key)}" value="${qty}" ${qty>0&&o.eligible!==false?'':'disabled'}></div>`;
   }).join('');
   const invalidChosen=(line.allocations||[]).filter(a=>{const o=options.find(x=>x.key===a.key);return !o||o.eligible===false;}).reduce((n,a)=>n+numberValue(a.quantity),0);const remaining=line.quantity-(chosen-invalidChosen);if(remaining!==0)complete=false;
-  return `<div class="sales-allocation-card"><strong>${esc(line.product||'Producto sin identificar')}${line.code?' · '+esc(line.code):''}</strong><div>Demanda de esta venta: <strong>${line.quantity}</strong> unidades</div>${!row?'<p class="status error">No coincide con un producto del inventario. Corregí la descripción o el código para asignar stock.</p>':''}<div class="sales-source-grid">${optionHtml||'<p class="muted">No hay stock disponible para este producto en los orígenes compatibles con la fecha de entrega.</p>'}</div><div class="sales-balance ${remaining===0?'ok':'bad'}">${remaining===0?'Demanda completamente cubierta.':remaining>0?'Faltan asignar '+remaining+' unidad(es) válidas.':'Hay '+Math.abs(remaining)+' unidad(es) asignadas de más.'}${invalidChosen>0?' · Hay '+invalidChosen+' unidad(es) asignadas a un embarque que no llega a tiempo.':''}</div></div>`;
+  return `<div class="sales-allocation-card"><strong>${esc(line.product||'Producto sin identificar')}${line.code?' · '+esc(line.code):''}</strong><div>Demanda de esta venta: <strong>${line.quantity}</strong> unidades</div>${!row?'<p class="status error">No coincide con un producto del inventario. Corregí la descripción o el código para asignar stock.</p>':''}<div class="sales-source-grid">${optionHtml||'<p class="muted">No hay stock disponible para este producto en ningún origen.</p>'}</div><div class="sales-balance ${remaining===0?'ok':'bad'}">${remaining===0?'Demanda completamente cubierta.':remaining>0?'Faltan asignar '+remaining+' unidad(es) válidas.':'Hay '+Math.abs(remaining)+' unidad(es) asignadas de más.'}${invalidChosen>0?' · Hay '+invalidChosen+' unidad(es) asignadas a un embarque que no llega a tiempo.':''}</div></div>`;
  }).join('');
  box.innerHTML=cards;
  box.querySelectorAll('[data-sales-source-check]').forEach(el=>el.onchange=()=>{const [lineId,key]=el.dataset.salesSourceCheck.split('|');const line=salesDraftLines.find(x=>x.id===lineId);line.allocations=line.allocations||[];const opt=salesSourceOptions(line).find(x=>x.key===key);const other=salesSelectedForSource(key,lineId);if(el.checked){if(!opt||opt.eligible===false||opt.available<=0){el.checked=false;return;}const available=Math.max(0,(opt?.available||0)-other);if(!available){el.checked=false;return;}line.allocations.push({key,sourceType:opt.sourceType,sourceId:opt.sourceId,quantity:Math.min(line.quantity,available)});}else line.allocations=line.allocations.filter(a=>a.key!==key);renderSalesAllocations();});
@@ -1909,10 +1918,10 @@ function renderSalesTable(){
  const box=$('salesTable');if(!box)return;
  if(!salesStorageReady){box.innerHTML=`<p class="status error">${salesStorageError?'No se pudo acceder al registro de ventas: '+esc(salesStorageError):'Falta configurar la tabla privada de ventas y el almacenamiento de facturas en Supabase.'}</p><p class="muted">Ejecutá el archivo SQL de configuración incluido con esta actualización y luego recargá FITIN CAMPO.</p>`;return;}
  if(!salesRecords.length){box.innerHTML='<p class="muted">Todavía no hay ventas registradas.</p>';return;}
- box.innerHTML='<table><thead><tr><th>N.º de registro</th><th>Fecha y hora de registro</th><th>Comprobante</th><th>Cliente</th><th>Fecha de entrega</th><th>Productos / demanda / precio</th><th>Importe total</th><th>Factura / acciones</th></tr></thead><tbody>'+salesRecords.map(r=>{
+ box.innerHTML='<table><thead><tr><th>N.º de registro</th><th>Fecha y hora de registro</th><th>Comprobante</th><th>Cliente</th><th>Productos / demanda / precio</th><th>Importe total</th><th>Factura / acciones</th></tr></thead><tbody>'+salesRecords.map(r=>{
   const comp=(r.pos||r.compNro)?`${esc(String(r.pos||'').padStart(5,'0'))}-${esc(String(r.compNro||'').padStart(8,'0'))}`:'—';
   const items=(r.items||[]).map(i=>{const iva=numberValue(i.ivaRate);const bon=numberValue(i.bonif);return `${esc(i.product)} (${esc(i.code||'—')})${i.invoiceDescription&&norm(i.invoiceDescription)!==norm(i.product)?' <small class="muted">[factura: '+esc(i.invoiceDescription)+']</small>':''} · Demanda: ${esc(i.quantity)} ${esc(i.unit||'u.')} × ${salesMoney(i.unitPrice)}${bon?' − '+esc(bon)+'%':''} = ${salesMoney(salesLineSubtotal(i))}${iva?' · IVA '+esc(iva)+'% → '+salesMoney(salesLineTotalIva(i)):''}`;}).join('<br>');
-  return `<tr><td><strong>${esc(r.number)}</strong></td><td>${esc(formatRequestDate(r.createdAt))}</td><td><strong>${comp}</strong><br><small>Emisión: ${esc(formatDateOnly(r.invoiceDate))}</small>${r.saleCond?'<br><small>Cond. de venta: '+esc(r.saleCond)+'</small>':''}</td><td><strong>${esc(r.client||'—')}</strong>${r.cuit?'<br><small>CUIT: '+esc(salesFormatCuit(r.cuit))+'</small>':''}${r.ivaCond?'<br><small>'+esc(r.ivaCond)+'</small>':''}${r.address?'<br><small>'+esc(r.address)+'</small>':''}</td><td>${esc(formatDateOnly(r.deliveryDate))}</td><td>${items}</td><td>${salesMoney(salesRecordTotal(r))}</td><td><div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="secondary" data-sales-pdf="${esc(r.id)}">Ver PDF</button>${isAdminUser()?`<button type="button" class="danger" data-sales-delete="${esc(r.id)}">Eliminar</button>`:''}</div></td></tr>`;
+  return `<tr><td><strong>${esc(r.number)}</strong></td><td>${esc(formatRequestDate(r.createdAt))}</td><td><strong>${comp}</strong><br><small>Emisión: ${esc(formatDateOnly(r.invoiceDate))}</small>${r.saleCond?'<br><small>Cond. de venta: '+esc(r.saleCond)+'</small>':''}</td><td><strong>${esc(r.client||'—')}</strong>${r.cuit?'<br><small>CUIT: '+esc(salesFormatCuit(r.cuit))+'</small>':''}${r.ivaCond?'<br><small>'+esc(r.ivaCond)+'</small>':''}${r.address?'<br><small>'+esc(r.address)+'</small>':''}</td><td>${items}</td><td>${salesMoney(salesRecordTotal(r))}</td><td><div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="secondary" data-sales-pdf="${esc(r.id)}">Ver PDF</button>${isAdminUser()?`<button type="button" class="danger" data-sales-delete="${esc(r.id)}">Eliminar</button>`:''}</div></td></tr>`;
  }).join('')+'</tbody></table>';
  box.querySelectorAll('[data-sales-pdf]').forEach(btn=>btn.onclick=async()=>{const rec=salesRecords.find(x=>x.id===btn.dataset.salesPdf);if(!rec?.pdfPath)return;btn.disabled=true;try{const {data,error}=await sb.storage.from(SALES_BUCKET).createSignedUrl(rec.pdfPath,60);if(error)throw error;window.open(data.signedUrl,'_blank','noopener');}catch(e){alert('No se pudo abrir la factura: '+e.message);}finally{btn.disabled=false;}});
  box.querySelectorAll('[data-sales-delete]').forEach(btn=>btn.onclick=()=>deleteSale(btn.dataset.salesDelete,btn));
@@ -1969,15 +1978,15 @@ async function registerSale(){
  // Actualiza el libro antes de validar para no usar una disponibilidad antigua si otro usuario registró movimientos.
  try{await loadBook();if(!salesStorageReady)throw new Error(salesStorageError||'No se pudo consultar el registro de ventas.');renderInventory();renderSalesAllocations();}catch(e){$('salesStatus').textContent='No se pudo actualizar el stock antes de registrar la venta: '+e.message;return;}
  if(!salesPdfFile){$('salesStatus').textContent='Adjuntá el PDF de la factura.';return;}
- const client=$('salesClient').value.trim(),invoiceDate=$('salesInvoiceDate').value,deliveryDate=$('salesDeliveryDate').value;
- if(!client||!deliveryDate){$('salesStatus').textContent='Completá el cliente y la fecha de entrega.';return;}
+ const client=$('salesClient').value.trim(),invoiceDate=$('salesInvoiceDate').value;
+ if(!client){$('salesStatus').textContent='Completá el campo «Apellido y Nombre / Razón Social». Si no se leyó del PDF, revisá «Texto leído del PDF» o cargalo a mano.';return;}
  if(!salesDraftLines.length||salesDraftLines.some(l=>!l.product||!l.code||!salesFindProduct(l)||!(Number(l.quantity)>0))){$('salesStatus').textContent='Cada línea debe tener un producto del inventario, código y cantidad válida.';return;}
  for(const line of salesDraftLines){const sum=(line.allocations||[]).reduce((a,x)=>a+numberValue(x.quantity),0);if(sum!==Number(line.quantity)){$('salesStatus').textContent=`La asignación de ${line.product} debe cubrir exactamente ${line.quantity} unidades.`;return;}}
  // Revalidar contra el saldo disponible antes de guardar, incluyendo otras líneas de esta misma factura.
  for(const line of salesDraftLines){for(const a of line.allocations||[]){const opt=salesSourceOptions(line).find(o=>o.key===a.key);const max=Math.max(0,(opt?.available||0)-salesSelectedForSource(a.key,line.id));if(!opt||opt.eligible===false||numberValue(a.quantity)>max){$('salesStatus').textContent=`El origen ${a.key} ya no tiene saldo suficiente para ${line.product}. Actualizá los datos y volvé a asignar.`;return;}}}
  const saleId=salesUid(),createdAt=new Date().toISOString();const items=salesDraftLines.map(l=>({product:l.product,code:l.code,invoiceDescription:l.invoiceDescription||'',quantity:Number(l.quantity),unit:l.unit||'',unitPrice:Number(l.unitPrice)||0,bonif:numberValue(l.bonif),ivaRate:numberValue(l.ivaRate),total:salesLineSubtotal(l),subtotal:salesLineSubtotal(l),subtotalWithIva:salesLineTotalIva(l),allocations:(l.allocations||[]).map(a=>({...a}))}));
  const invoiceFields={pos:$('salesPos').value.trim(),compNro:$('salesCompNro').value.trim(),cuit:$('salesCuit').value.replace(/\D/g,''),ivaCond:$('salesIvaCond').value.trim(),address:$('salesAddress').value.trim(),saleCond:$('salesSaleCond').value.trim(),invoiceTotal:numberValue($('salesInvoiceTotal').value)};
- const payload={client,invoiceDate,deliveryDate,...invoiceFields,items,fileName:salesPdfFile.name,createdAt,createdBy:currentUser.email||'Usuario'};
+ const payload={client,invoiceDate,...invoiceFields,items,fileName:salesPdfFile.name,createdAt,createdBy:currentUser.email||'Usuario'};
  const path=`${currentUser.id}/${saleId}.pdf`;$('salesRegisterBtn').disabled=true;$('salesStatus').textContent='Guardando factura y venta…';let uploaded=false,inserted=false,stockCommitted=false;
  try{
   const {error:uploadError}=await sb.storage.from(SALES_BUCKET).upload(path,salesPdfFile,{contentType:'application/pdf',upsert:false});if(uploadError)throw new Error('No se pudo guardar el PDF: '+uploadError.message);uploaded=true;
@@ -1996,7 +2005,7 @@ async function registerSale(){
     stockSaveWarning=' El stock quedó actualizado; Supabase informó además: '+e.message;
   }
   salesRecords.unshift({...payload,id:saleId,pdfPath:path,createdAt,dbNumber:dbRow.numero});
-  salesDraftLines=[salesNewLine()];salesPdfFile=null;$('salesInvoicePdf').value='';['salesClient','salesInvoiceDate','salesDeliveryDate','salesPos','salesCompNro','salesCuit','salesIvaCond','salesAddress','salesSaleCond','salesInvoiceTotal'].forEach(id=>{if($(id))$(id).value='';});$('salesPdfText').textContent='Todavía no se cargó una factura.';$('salesPdfStatus').textContent='';
+  salesDraftLines=[salesNewLine()];salesPdfFile=null;$('salesInvoicePdf').value='';['salesClient','salesInvoiceDate','salesPos','salesCompNro','salesCuit','salesIvaCond','salesAddress','salesSaleCond','salesInvoiceTotal'].forEach(id=>{if($(id))$(id).value='';});$('salesPdfText').textContent='Todavía no se cargó una factura.';$('salesPdfStatus').textContent='';
   renderSalesLines();renderSalesAllocations();renderSalesTable();renderInventory();
   $('salesStatus').textContent=`Venta ${number} registrada. La demanda quedó asentada y el stock fue descontado según los orígenes elegidos.${stockSaveWarning}`;
  }catch(e){
@@ -2008,7 +2017,6 @@ async function registerSale(){
 $('salesInvoicePdf')?.addEventListener('change',e=>{const f=e.target.files?.[0];if(f){if(f.type!=='application/pdf'&&!f.name.toLowerCase().endsWith('.pdf')){$('salesPdfStatus').textContent='El archivo debe ser PDF.';return;}readSalesPdf(f);}});
 $('salesAddLine')?.addEventListener('click',()=>{salesDraftLines.push(salesNewLine());renderSalesLines();renderSalesAllocations();});
 $('salesNewProduct')?.addEventListener('click',createManualProduct);
-$('salesDeliveryDate')?.addEventListener('change',renderSalesAllocations);
 $('salesInvoiceTotal')?.addEventListener('input',salesUpdateTotalCheck);
 $('salesRegisterBtn')?.addEventListener('click',registerSale);
 
