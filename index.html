@@ -178,6 +178,7 @@ footer {text-align:center;color:var(--muted);padding:22px}
 .ship-head h3{margin:0 0 4px}.ship-meta{margin:2px 0 4px;line-height:1.6}
 .ship-badge{display:inline-block;font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;background:#fff4dc;color:#8a5a13;margin-left:8px}
 .ship-record.is-received .ship-badge{background:#e3e6eb;color:#6b7280}
+.ship-foot{display:flex;justify-content:flex-end;margin-top:6px}
 .ship-record details{margin-top:10px}.ship-record summary{cursor:pointer;font-weight:700;padding:6px 0}
 .ship-record h4{margin:16px 0 8px}
 .ship-inst-table{width:100%;border-collapse:collapse}.ship-inst-table th,.ship-inst-table td{border-bottom:1px solid var(--border);padding:8px;text-align:left;vertical-align:top}
@@ -2701,6 +2702,7 @@ function renderShipmentRegistry(){
     <div class="toolbar"><button type="button" class="secondary" data-inst-add="${rid}">Agregar otra instancia</button></div>
    </details>
    <p class="status" id="shipMsg_${rid}"></p>
+   ${isAdminUser()?`<div class="ship-foot"><button type="button" class="danger" data-ship-cancel="${rid}">Cancelar embarque</button></div>`:''}
   </article>`;
  }).join('');
  records.forEach(rec=>{renderEntryLines('se'+rec.id);const m=shipmentMsgs[rec.id];if(m)shipmentSetMsg(rec.id,m.text,m.error);});
@@ -2708,6 +2710,7 @@ function renderShipmentRegistry(){
  box.querySelectorAll('[data-ship-details]').forEach(el=>el.ontoggle=()=>{el.open?shipmentOpen.add(el.dataset.shipDetails):shipmentOpen.delete(el.dataset.shipDetails);});
  box.querySelectorAll('[data-ship-addline]').forEach(btn=>btn.onclick=()=>addEntryLine('se'+btn.dataset.shipAddline));
  box.querySelectorAll('[data-ship-discard]').forEach(btn=>btn.onclick=()=>{delete entryDrafts['se'+btn.dataset.shipDiscard];shipmentSetMsg(btn.dataset.shipDiscard,'Cambios descartados.');renderShipmentRegistry();});
+ box.querySelectorAll('[data-ship-cancel]').forEach(btn=>btn.onclick=()=>shipmentCancel(btn.dataset.shipCancel,btn));
  box.querySelectorAll('[data-ship-save]').forEach(btn=>btn.onclick=()=>shipmentSaveEdits(btn.dataset.shipSave,btn.closest('[data-ship]'),btn));
  box.querySelectorAll('[data-shipment-received]').forEach(input=>input.onchange=async()=>{
    const rec=shipmentFind(input.dataset.shipmentReceived);if(!rec)return;
@@ -2752,6 +2755,33 @@ function renderShipmentRegistry(){
    if(inst.doc?.path){const {error}=await sb.storage.from(SHIP_BUCKET).remove([inst.doc.path]);if(error)console.warn('No se pudo borrar el PDF:',error.message);}
    shipmentSetMsg(recId,`Instancia «${inst.name}» eliminada.`);renderShipmentRegistry();
  });
+}
+/* Cancelar embarque (solo administrador): borra el registro, sus facturas y las asignaciones de stock que tomaron unidades de él */
+async function shipmentCancel(id,btn){
+ if(!isAdminUser()){alert('Solo el administrador puede cancelar embarques.');return;}
+ const rec=shipmentFind(id);if(!rec)return;
+ const moves=(book.ventasConsumos||[]).filter(m=>m.sourceType==='shipment'&&String(m.sourceId||'')===String(id));
+ const saleIds=[...new Set(moves.map(m=>m.saleId))];
+ const saleNames=saleIds.map(sid=>(salesRecords||[]).find(r=>r.id===sid)?.number||'venta sin número');
+ const docs=shipmentInstances(rec).filter(i=>i.doc?.path).map(i=>i.doc.path);
+ const received=!!(rec.receivedAt||rec.received);
+ const lines=[`¿Cancelar el embarque ${rec.number||''}${rec.container?' (container '+rec.container+')':''}?`,'',
+  '• Se elimina su registro completo y deja de figurar en el stock'+(received?' (ya estaba recibido: sus cantidades se restan de Trenque Lauquen).':'.'),
+  docs.length?`• Se borran ${docs.length} factura(s) PDF cargadas en sus instancias.`:'• No tiene facturas cargadas.',
+  moves.length?`• Se quitan las asignaciones de stock que tomaron unidades de este embarque en: ${saleNames.join(', ')}. Esas ventas siguen registradas, pero esas unidades ya no se descuentan de ningún origen.`:'• Ninguna venta tomó unidades de este embarque.',
+  '','Esta acción no se puede deshacer.'];
+ if(!confirm(lines.join('\n')))return;
+ if(btn){btn.disabled=true;btn.textContent='Cancelando…';}
+ const prevShipments=[...(book.embarques||[])],prevMoves=[...(book.ventasConsumos||[])];
+ book.embarques=prevShipments.filter(r=>String(r.id)!==String(id));
+ book.ventasConsumos=prevMoves.filter(m=>!(m.sourceType==='shipment'&&String(m.sourceId||'')===String(id)));
+ try{await saveBook();}
+ catch(e){book.embarques=prevShipments;book.ventasConsumos=prevMoves;shipmentSetMsg(id,'No se pudo cancelar el embarque: '+e.message,true);renderShipmentRegistry();return;}
+ if(docs.length){const {error}=await sb.storage.from(SHIP_BUCKET).remove(docs);if(error)console.warn('Embarque cancelado, pero no se pudieron borrar algunos PDF:',error.message);}
+ delete entryDrafts['se'+id];delete shipmentMsgs[id];shipmentOpen.delete(String(id));
+ renderShipmentRegistry();renderShipmentCards();renderInventory();
+ if(typeof renderSalesAllocations==='function')renderSalesAllocations();
+ alert(`Embarque ${rec.number||''} cancelado.`);
 }
 async function shipmentSaveEdits(id,root,btn){
  const rec=shipmentFind(id);if(!rec||!root)return;
