@@ -170,6 +170,21 @@ footer {text-align:center;color:var(--muted);padding:22px}
 .shipment-calendar-day.has-events{background:#fff9ed;border-color:#edc878}.shipment-calendar-day.is-received{background:#effaf3;border-color:#91d1a5}
 .shipment-calendar-day i{font-style:normal;font-size:10px;color:#8a5a13;line-height:1.2}.shipment-calendar-day.is-received i{color:#237342}
 .shipment-calendar-empty{min-height:66px}
+.ship-record{border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin:0 0 14px;background:var(--card)}
+.ship-record.is-received{background:#f3f4f6;border-color:#e2e5ea;color:#7c8594}
+.ship-record.is-received h3,.ship-record.is-received strong,.ship-record.is-received td,.ship-record.is-received th,.ship-record.is-received label,.ship-record.is-received summary{color:#7c8594}
+.ship-record.is-received input,.ship-record.is-received select{background:#f8f9fb;color:#7c8594}
+.ship-head{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:flex-start}
+.ship-head h3{margin:0 0 4px}.ship-meta{margin:2px 0 4px;line-height:1.6}
+.ship-badge{display:inline-block;font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;background:#fff4dc;color:#8a5a13;margin-left:8px}
+.ship-record.is-received .ship-badge{background:#e3e6eb;color:#6b7280}
+.ship-record details{margin-top:10px}.ship-record summary{cursor:pointer;font-weight:700;padding:6px 0}
+.ship-record h4{margin:16px 0 8px}
+.ship-inst-table{width:100%;border-collapse:collapse}.ship-inst-table th,.ship-inst-table td{border-bottom:1px solid var(--border);padding:8px;text-align:left;vertical-align:top}
+.ship-inst-table input[type=date]{max-width:170px}.ship-inst-table small{display:block}
+.ship-inst-actions{display:flex;gap:6px;flex-wrap:wrap}.ship-inst-actions button,.ship-file-btn{padding:7px 11px;font-size:14px}
+.ship-file-btn{display:inline-block;border-radius:8px;background:var(--primary);color:#fff;cursor:pointer}
+.ship-record.is-received .ship-file-btn,.ship-record.is-received label.ship-file-btn{background:#9aa3b2;color:#fff}
 .calendar-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#e2a52e;flex:0 0 9px}.calendar-dot.received{background:#29965a}
 .shipment-calendar-detail{margin-top:16px;padding:14px 16px;border-radius:11px;background:#f5f8fc;border:1px solid #dce3ef}.shipment-calendar-detail ul{margin:9px 0 0;padding-left:20px}.shipment-calendar-detail li{margin:7px 0}.shipment-calendar-detail li .calendar-dot{margin-right:7px}
 @media(max-width:640px){.shipment-calendar-grid{gap:3px}.shipment-calendar-day{min-height:54px;padding:5px;font-size:12px}.shipment-calendar-day i{font-size:9px}.shipment-calendar-toolbar h3{font-size:15px}}
@@ -374,10 +389,10 @@ footer {text-align:center;color:var(--muted);padding:22px}
   <section id="embarquesTab" class="hidden">
     <div class="panel"><h2>Calendario de ingresos de mercadería</h2><p class="muted">Visualizá las fechas estimadas y los ingresos confirmados. Seleccioná un día para ver sus embarques.</p><div id="shipmentCalendar" class="shipment-calendar"></div></div><div class="panel"><h2>Próximos embarques</h2><p class="muted">Avisos calculados automáticamente a partir de la fecha estimada de ingreso.</p><div id="shipmentCards" class="shipment-cards"></div></div>
     <div class="panel"><h2>Registrar embarque</h2><p class="muted">La fecha y hora de registro se asignan automáticamente al guardar.</p>
-      <div class="form-grid"><div><label for="shipmentDate">Fecha estimada de ingreso</label><input id="shipmentDate" type="date"></div><div><label for="shipmentLabel">Identificación / referencia (opcional)</label><input id="shipmentLabel" placeholder="Ej. Embarque octubre 01"></div></div>
+      <div class="form-grid"><div><label for="shipmentInvoice">N.º de factura</label><input id="shipmentInvoice" placeholder="Ej. 7693083-202"></div><div><label for="shipmentContainer">Container</label><input id="shipmentContainer" placeholder="Ej. ZIMU1234567"></div><div><label for="shipmentDate">Fecha estimada de ingreso</label><input id="shipmentDate" type="date"></div><div><label for="shipmentLabel">Identificación / referencia (opcional)</label><input id="shipmentLabel" placeholder="Ej. 3er contenedor"></div></div><p class="muted">Al registrarlo se crean las instancias de facturación (FC Proveedor, Transporte marítimo, Comex aduana, ARCA, Honorarios del despachante y Transporte interno). Las facturas se cargan después, desde «Embarques registrados».</p>
       <div class="toolbar"><button type="button" id="shipmentAddLine">Agregar producto</button><button type="button" class="secondary" id="shipmentNewProduct">Crear producto y código</button><button type="button" id="shipmentSave">Registrar embarque</button></div>
       <div id="shipmentLines" class="table-wrap"></div><p id="shipmentStatus" class="status"></p>
-    </div><div class="panel"><h2>Embarques registrados</h2><div id="shipmentTable" class="table-wrap"></div></div>
+    </div><div class="panel"><h2>Embarques registrados</h2><p class="muted">Cada embarque queda abierto: podés editar sus datos y productos, y cargar la factura de cada instancia. Al subir un PDF se lee automáticamente la fecha de la factura.</p><div id="shipmentTable"></div></div>
   </section>
 
 
@@ -1543,7 +1558,7 @@ function inventoryRows() {
     id:rec.id||rec.number||('embarque-'+(i+1)),
     key:'shipment_'+(rec.id||rec.number||i),
     received:!!(rec.receivedAt||rec.received),
-    label:[rec.label?String(rec.label):String(rec.number||('Embarque '+(i+1))),formatDateOnly(rec.date||rec.estimatedDate),((rec.receivedAt||rec.received)?'Recibido':'Pendiente')].filter(Boolean).join(' · ')
+    label:[rec.label?String(rec.label):(rec.container?'Container '+String(rec.container):String(rec.number||('Embarque '+(i+1)))),formatDateOnly(rec.date||rec.estimatedDate),((rec.receivedAt||rec.received)?'Recibido':'Pendiente')].filter(Boolean).join(' · ')
   }));
   shipmentRecords.forEach((rec,i)=>(rec.lines||[]).forEach(line=>{
     const item=findItem(line); if(!item)return; const qty=numberValue(line.quantity);
@@ -1564,7 +1579,8 @@ function inventoryRows() {
   });
   grouped.forEach(item=>{item.embarques=item.legacyEmbarques+shipmentColumns.filter(col=>!col.received).reduce((a,col)=>a+numberValue(item.shipmentValues?.[col.key]||0),0);});
   const rows=[...grouped.values()].sort((a,b)=>a.name.localeCompare(b.name,'es')||a.code.localeCompare(b.code,'es'));
-  rows.shipmentColumns=shipmentColumns;
+  // Al recibirse, el embarque deja de tener columna en el stock (su cantidad ya está en Trenque Lauquen).
+  rows.shipmentColumns=shipmentColumns.filter(col=>!col.received);
   return rows;
 }
 function renderInventory() {
@@ -2519,10 +2535,11 @@ async function saveEntry(type){
  if(!lines.length||lines.length!==entryDrafts[type].length){message(cfg.statusId,'Elegí un producto válido en cada fila antes de registrar.',true);return;}
  const date=$(cfg.dateId)?.value||'';if(!date){message(cfg.statusId,'Completá la fecha correspondiente antes de registrar.',true);return;}
  const client=cfg.clientId?$(cfg.clientId).value.trim():'';if(cfg.clientId&&!client){message(cfg.statusId,'Ingresá el cliente antes de registrar.',true);return;}
+ if(type==='shipment'&&(!$('shipmentInvoice').value.trim()||!$('shipmentContainer').value.trim())){message(cfg.statusId,'Completá el número de factura y el container antes de registrar.',true);return;}
  const now=new Date().toISOString();book[cfg.counterKey]=(Number(book[cfg.counterKey])||0)+1;
- const record={id:uid(),number:cfg.prefix+'-'+String(book[cfg.counterKey]).padStart(5,'0'),operation:cfg.operation,client,date,estimatedDate:date,label:type==='shipment'?($('shipmentLabel').value.trim()):'',createdAt:now,createdBy:currentUser?.email||'Usuario',lines};
+ const record={id:uid(),number:cfg.prefix+'-'+String(book[cfg.counterKey]).padStart(5,'0'),operation:cfg.operation,client,date,estimatedDate:date,label:type==='shipment'?($('shipmentLabel').value.trim()):'',...(type==='shipment'?{invoiceNumber:$('shipmentInvoice').value.trim(),container:$('shipmentContainer').value.trim(),instances:shipmentDefaultInstances()}:{}),createdAt:now,createdBy:currentUser?.email||'Usuario',lines};
  book[cfg.productsKey]=book[cfg.productsKey]||[];book[cfg.productsKey].push(record);
- try{await saveBook();message(cfg.statusId,`${cfg.operation}: ${record.number} registrado correctamente.`);entryDrafts[type]=[{productKey:'',product:'',code:'',quantity:1}];if(cfg.clientId)$(cfg.clientId).value='';$(cfg.dateId).value='';if(type==='shipment')$('shipmentLabel').value='';renderEntryLines(type);renderEntryTable(type);if(type==='shipment')renderShipmentCards();renderInventory();}
+ try{await saveBook();message(cfg.statusId,`${cfg.operation}: ${record.number} registrado correctamente.`);entryDrafts[type]=[{productKey:'',product:'',code:'',quantity:1}];if(cfg.clientId)$(cfg.clientId).value='';$(cfg.dateId).value='';if(type==='shipment'){$('shipmentLabel').value='';$('shipmentInvoice').value='';$('shipmentContainer').value='';}renderEntryLines(type);renderEntryTable(type);if(type==='shipment')renderShipmentCards();renderInventory();}
  catch(e){book[cfg.productsKey]=book[cfg.productsKey].filter(x=>x.id!==record.id);book[cfg.counterKey]--;message(cfg.statusId,'No se pudo guardar: '+e.message,true);}
 }
 function renderConsignmentMatrix(){
@@ -2575,6 +2592,7 @@ function renderConsignmentMatrix(){
   box.innerHTML='<table class="consignment-matrix-table"><thead>'+header+'</thead><tbody>'+body+'</tbody></table>';
 }
 function renderEntryTable(type){
+ if(type==='shipment'){renderShipmentRegistry();return;}
  const cfg=ENTRY_CONFIG[type],box=$(cfg.tableId);if(!box)return;const records=[...(book[cfg.productsKey]||[])].sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
  if(!records.length){box.innerHTML='<p class="muted" style="padding:12px">Todavía no hay registros.</p>';return;}
  let html='<table class="request-lines"><thead><tr><th>N.º</th><th>Operación</th><th>Cliente / referencia</th><th>Fecha solicitada / estimada</th><th>Fecha y hora de registro</th><th>Productos y cantidades</th><th>'+(type==='shipment'?'Recibido':'Acción')+'</th></tr></thead><tbody>';
@@ -2598,6 +2616,180 @@ function renderEntryTable(type){
  box.querySelectorAll('[data-entry-delete]').forEach(btn=>btn.onclick=async()=>{const [t,id]=btn.dataset.entryDelete.split(':');const c=ENTRY_CONFIG[t];const used=(book.ventasConsumos||[]).some(m=>String(m.sourceId||'')===String(id));if(used){alert('No se puede eliminar este registro porque ya abasteció una o más ventas.');return;}if(!confirm('¿Eliminar este registro?'))return;const prev=book[c.productsKey];book[c.productsKey]=prev.filter(r=>r.id!==id);try{await saveBook();renderEntryTable(t);if(t==='shipment')renderShipmentCards();renderInventory();}catch(e){book[c.productsKey]=prev;alert('No se pudo eliminar: '+e.message);}});
 }
 
+
+/* EMBARQUES: registro abierto con instancias de facturación (cualquier usuario habilitado puede editar) */
+const SHIP_BUCKET='embarques-facturas';
+const SHIPMENT_DEFAULT_INSTANCES=['FC Proveedor','Transporte marítimo - PLUSCARGO','Comex aduana - Inspección','ARCA','Honorarios del despachante - FC Electrónica de Languenari','Transporte interno - Despachante - Puerto a Trenque Lauquen'];
+function shipmentDefaultInstances(){return SHIPMENT_DEFAULT_INSTANCES.map((name,i)=>({id:'inst_'+(i+1),name,custom:false,doc:null}));}
+function shipmentInstances(rec){if(!Array.isArray(rec.instances))rec.instances=shipmentDefaultInstances();return rec.instances;}
+const shipmentOpen=new Set();const shipmentMsgs={};
+function shipmentSetMsg(id,text,error=false){shipmentMsgs[id]={text,error};const el=document.getElementById('shipMsg_'+id);if(el){el.textContent=text;el.className='status '+(error?'error':'success');}}
+function shipmentFind(id){return (book.embarques||[]).find(r=>String(r.id)===String(id));}
+/* Fecha de una factura de embarque: busca primero junto a etiquetas conocidas y luego cualquier fecha válida */
+const SHIP_MONTHS={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,sept:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12,ene:1,enero:1,febrero:2,marzo:3,abr:4,abril:4,mayo:5,junio:6,julio:7,ago:8,agosto:8,set:9,septiembre:9,setiembre:9,octubre:10,noviembre:11,dic:12,diciembre:12};
+function shipmentDateFrom(str){
+ const s=String(str||'');const iso=(y,m,d)=>{y=Number(y);m=Number(m);d=Number(d);if(y<100)y+=2000;if(!(y>=2000&&y<=2100&&m>=1&&m<=12&&d>=1&&d<=31))return '';return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;};
+ const found=[];
+ let m;const reNum=/\b(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4}|\d{2})\b/g;while((m=reNum.exec(s))){const v=iso(m[3],m[2],m[1]);if(v)found.push({i:m.index,v});}
+ const reIso=/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/g;while((m=reIso.exec(s))){const v=iso(m[1],m[2],m[3]);if(v)found.push({i:m.index,v});}
+ const reDMY=/\b(\d{1,2})(?:st|nd|rd|th)?\s*(?:de\s+|of\s+)?([A-Za-zé]{3,10})\.?\s*(?:de\s+)?,?\s*(\d{4})\b/gi;while((m=reDMY.exec(s))){const mo=SHIP_MONTHS[m[2].toLowerCase()];if(mo){const v=iso(m[3],mo,m[1]);if(v)found.push({i:m.index,v});}}
+ const reMDY=/\b([A-Za-z]{3,10})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s*(\d{4})\b/gi;while((m=reMDY.exec(s))){const mo=SHIP_MONTHS[m[1].toLowerCase()];if(mo){const v=iso(m[3],mo,m[2]);if(v)found.push({i:m.index,v});}}
+ found.sort((a,b)=>a.i-b.i);return found;
+}
+function shipmentInvoiceDate(text){
+ const t=String(text||'');
+ const labels=[/Fecha\s+(?:de\s+)?Emisi[oó]n/i,/Fecha\s+(?:de\s+(?:la\s+)?)?(?:Factura|Comprobante)/i,/Fecha\s+(?:de\s+)?Generaci[oó]n/i,/(?:C\/I|Invoice)\s*Date/i,/\bFecha\s*:/i,/\bDate\s*:/i];
+ for(const re of labels){
+  const m=t.match(re);if(!m)continue;
+  const after=t.slice(m.index+m[0].length,m.index+m[0].length+160);
+  const d=shipmentDateFrom(after)[0];if(d)return d.v;
+ }
+ // Sin etiqueta: primera fecha que no sea de vencimiento, inicio de actividades o período.
+ for(const d of shipmentDateFrom(t)){const before=t.slice(Math.max(0,d.i-40),d.i);if(!/(vto|venc|inicio|expir|hasta|desde|per[ií]odo|oficializ)/i.test(before))return d.v;}
+ return '';
+}
+
+async function shipmentPdfText(file){
+ if(!window.pdfjsLib)throw new Error('No se pudo cargar el lector PDF.');
+ pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+ const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;const pages=[];
+ for(let n=1;n<=pdf.numPages;n++){
+  const content=await (await pdf.getPage(n)).getTextContent();const rows=new Map();
+  content.items.forEach(item=>{const y=Math.round((item.transform?.[5]||0)/3)*3;if(!rows.has(y))rows.set(y,[]);rows.get(y).push({x:item.transform?.[4]||0,text:item.str||''});});
+  pages.push([...rows.entries()].sort((a,b)=>b[0]-a[0]).map(([,parts])=>parts.sort((a,b)=>a.x-b.x).map(x=>x.text).join(' ')).join('\n'));
+ }
+ const original=pages.filter(t=>!/\b(?:DUPLICADO|TRIPLICADO)\b/i.test(t));
+ return (original.length?original:pages).join('\n');
+}
+function shipmentConsumed(rec){
+ const map=new Map();
+ (book.ventasConsumos||[]).filter(m=>m.sourceType==='shipment'&&String(m.sourceId||'')===String(rec.id)).forEach(m=>{const k=m.code?'c:'+norm(m.code):'n:'+norm(m.product);const it=map.get(k)||{product:m.product,code:m.code,qty:0};it.qty+=numberValue(m.quantity);map.set(k,it);});
+ return [...map.values()];
+}
+function renderShipmentRegistry(){
+ const box=$('shipmentTable');if(!box)return;
+ const records=[...(book.embarques||[])].sort((a,b)=>{const ra=!!(a.receivedAt||a.received),rb=!!(b.receivedAt||b.received);if(ra!==rb)return ra?1:-1;return String(b.createdAt||'').localeCompare(String(a.createdAt||''));});
+ if(!records.length){box.innerHTML='<p class="muted" style="padding:12px">Todavía no hay embarques registrados.</p>';return;}
+ box.innerHTML=records.map(rec=>{
+  const id=String(rec.id),rid=esc(id),received=!!(rec.receivedAt||rec.received),instances=shipmentInstances(rec);
+  const key='se'+id;ENTRY_CONFIG[key]={linesId:'shipEditLines_'+id};
+  if(!entryDrafts[key])entryDrafts[key]=(rec.lines||[]).map(l=>({productKey:l.productKey||'',product:l.product,code:l.code||'',quantity:l.quantity}));
+  const loaded=instances.filter(i=>i.doc).length;
+  const products=(rec.lines||[]).map(l=>`${esc(l.product)}${l.code?' ('+esc(l.code)+')':''} — ${esc(l.quantity)}`).join('<br>');
+  const receivedBox=`<label style="display:flex;align-items:center;gap:7px;white-space:nowrap"><input type="checkbox" data-shipment-received="${rid}" ${received?'checked':''}> ${received?'Recibido':'Marcar recibido'}</label>${rec.receivedAt?`<small class="muted">${esc(formatRequestDate(rec.receivedAt))}${rec.receivedBy?' · '+esc(rec.receivedBy):''}</small>`:''}`;
+  const instRows=instances.map((inst,i)=>{
+   const iid=esc(inst.id),doc=inst.doc,ref=`${rid}|${iid}`;
+   return `<tr><td><strong>${i+1}. ${esc(inst.name)}</strong>${inst.custom?'<small class="muted">Instancia agregada</small>':''}</td>
+    <td>${doc?`${esc(doc.fileName||'Factura.pdf')}<small class="muted">Cargada: ${esc(formatRequestDate(doc.uploadedAt))}${doc.uploadedBy?' · '+esc(doc.uploadedBy):''}</small>`:'<span class="muted">Sin factura</span>'}</td>
+    <td>${doc?`<input type="date" value="${esc(doc.date||'')}" data-inst-date="${ref}" aria-label="Fecha de la factura"><small class="muted">${doc.date?(doc.dateSource==='manual'?'Ingresada a mano':'Leída del PDF'):'No se pudo leer: ingresala a mano'}</small>`:'—'}</td>
+    <td><div class="ship-inst-actions">${doc?`<button type="button" class="secondary" data-inst-view="${ref}">Ver PDF</button>`:''}<label class="ship-file-btn">${doc?'Reemplazar PDF':'Subir PDF'}<input type="file" accept="application/pdf,.pdf" data-inst-file="${ref}" hidden></label>${doc?`<button type="button" class="danger" data-inst-clear="${ref}">Quitar factura</button>`:''}${inst.custom?`<button type="button" class="danger" data-inst-remove="${ref}">Eliminar instancia</button>`:''}</div></td></tr>`;
+  }).join('');
+  return `<article class="ship-record ${received?'is-received':''}" data-ship="${rid}">
+   <div class="ship-head"><div><h3>${esc(rec.number||'Embarque')}${rec.label?' · '+esc(rec.label):''}<span class="ship-badge">${received?'Recibido':'Pendiente'}</span></h3>
+    <div class="ship-meta">N.º de factura: <strong>${esc(rec.invoiceNumber||'—')}</strong> · Container: <strong>${esc(rec.container||'—')}</strong> · Fecha estimada de ingreso: <strong>${esc(formatDateOnly(rec.date||rec.estimatedDate))}</strong> · Facturas cargadas: <strong>${loaded}/${instances.length}</strong></div>
+    <div><small class="muted">Registrado: ${esc(formatRequestDate(rec.createdAt))}${rec.createdBy?' · '+esc(rec.createdBy):''}${rec.updatedAt?' · Última edición: '+esc(formatRequestDate(rec.updatedAt))+(rec.updatedBy?' · '+esc(rec.updatedBy):''):''}</small></div>
+    <div style="margin-top:6px">${products||'<span class="muted">Sin productos</span>'}</div></div>
+    <div>${receivedBox}</div></div>
+   <details data-ship-details="${rid}" ${shipmentOpen.has(id)?'open':''}><summary>Ver y editar registro e instancias de facturación</summary>
+    <h4>Datos del embarque</h4>
+    <div class="form-grid"><div><label>N.º de factura</label><input data-ship-field="invoiceNumber" value="${esc(rec.invoiceNumber||'')}"></div><div><label>Container</label><input data-ship-field="container" value="${esc(rec.container||'')}"></div><div><label>Fecha estimada de ingreso</label><input type="date" data-ship-field="date" value="${esc(rec.date||rec.estimatedDate||'')}"></div><div><label>Identificación / referencia (opcional)</label><input data-ship-field="label" value="${esc(rec.label||'')}"></div></div>
+    <h4>Productos del embarque</h4>
+    <div id="shipEditLines_${rid}" class="table-wrap"></div>
+    <div class="toolbar"><button type="button" class="secondary" data-ship-addline="${rid}">Agregar producto</button><button type="button" class="secondary" data-ship-discard="${rid}">Descartar cambios</button><button type="button" data-ship-save="${rid}">Guardar cambios del embarque</button></div>
+    <h4>Instancias de facturación</h4>
+    <div class="table-wrap"><table class="ship-inst-table"><thead><tr><th>Instancia</th><th>Factura (PDF)</th><th>Fecha de la factura</th><th>Acciones</th></tr></thead><tbody>${instRows}</tbody></table></div>
+    <div class="toolbar"><button type="button" class="secondary" data-inst-add="${rid}">Agregar otra instancia</button></div>
+   </details>
+   <p class="status" id="shipMsg_${rid}"></p>
+  </article>`;
+ }).join('');
+ records.forEach(rec=>{renderEntryLines('se'+rec.id);const m=shipmentMsgs[rec.id];if(m)shipmentSetMsg(rec.id,m.text,m.error);});
+ const rerender=()=>{renderShipmentRegistry();renderShipmentCards();renderInventory();};
+ box.querySelectorAll('[data-ship-details]').forEach(el=>el.ontoggle=()=>{el.open?shipmentOpen.add(el.dataset.shipDetails):shipmentOpen.delete(el.dataset.shipDetails);});
+ box.querySelectorAll('[data-ship-addline]').forEach(btn=>btn.onclick=()=>addEntryLine('se'+btn.dataset.shipAddline));
+ box.querySelectorAll('[data-ship-discard]').forEach(btn=>btn.onclick=()=>{delete entryDrafts['se'+btn.dataset.shipDiscard];shipmentSetMsg(btn.dataset.shipDiscard,'Cambios descartados.');renderShipmentRegistry();});
+ box.querySelectorAll('[data-ship-save]').forEach(btn=>btn.onclick=()=>shipmentSaveEdits(btn.dataset.shipSave,btn.closest('[data-ship]'),btn));
+ box.querySelectorAll('[data-shipment-received]').forEach(input=>input.onchange=async()=>{
+   const rec=shipmentFind(input.dataset.shipmentReceived);if(!rec)return;
+   const previous={received:rec.received,receivedAt:rec.receivedAt,receivedBy:rec.receivedBy};
+   if(input.checked){if(!confirm('¿Confirmás que este embarque ya fue recibido? Sus cantidades se sumarán al stock de Trenque Lauquen y su columna de embarque dejará de figurar en el stock. El registro completo queda disponible para consulta.')){input.checked=false;return;}rec.received=true;rec.receivedAt=new Date().toISOString();rec.receivedBy=currentUser?.email||'Usuario';}
+   else {if(!confirm('¿Querés desmarcar este embarque como recibido? Las cantidades volverán a figurar como embarque pendiente y se descontarán del stock de Trenque Lauquen.')){input.checked=true;return;}delete rec.received;delete rec.receivedAt;delete rec.receivedBy;}
+   input.disabled=true;
+   try{await saveBook();rerender();}
+   catch(e){Object.assign(rec,previous);if(previous.received===undefined)delete rec.received;if(previous.receivedAt===undefined)delete rec.receivedAt;if(previous.receivedBy===undefined)delete rec.receivedBy;alert('No se pudo actualizar el estado del embarque: '+e.message);renderShipmentRegistry();}
+ });
+ const split=v=>String(v||'').split('|');
+ const getInst=v=>{const [r,i]=split(v);const rec=shipmentFind(r);const inst=rec&&shipmentInstances(rec).find(x=>String(x.id)===i);return {rec,inst,recId:r};};
+ box.querySelectorAll('[data-inst-file]').forEach(input=>input.onchange=()=>{const f=input.files?.[0];if(!f)return;const {rec,inst}=getInst(input.dataset.instFile);if(rec&&inst)shipmentUploadInvoice(rec,inst,f);});
+ box.querySelectorAll('[data-inst-view]').forEach(btn=>btn.onclick=async()=>{const {inst}=getInst(btn.dataset.instView);if(!inst?.doc?.path)return;btn.disabled=true;try{const {data,error}=await sb.storage.from(SHIP_BUCKET).createSignedUrl(inst.doc.path,60);if(error)throw error;window.open(data.signedUrl,'_blank','noopener');}catch(e){alert('No se pudo abrir la factura: '+e.message);}finally{btn.disabled=false;}});
+ box.querySelectorAll('[data-inst-date]').forEach(input=>input.onchange=async()=>{
+   const {rec,inst,recId}=getInst(input.dataset.instDate);if(!inst?.doc)return;
+   const prev={date:inst.doc.date,dateSource:inst.doc.dateSource};inst.doc.date=input.value;inst.doc.dateSource='manual';
+   try{await saveBook();shipmentSetMsg(recId,`Fecha de «${inst.name}» actualizada.`);}catch(e){Object.assign(inst.doc,prev);shipmentSetMsg(recId,'No se pudo guardar la fecha: '+e.message,true);}
+   renderShipmentRegistry();
+ });
+ box.querySelectorAll('[data-inst-clear]').forEach(btn=>btn.onclick=async()=>{
+   const {inst,recId}=getInst(btn.dataset.instClear);if(!inst?.doc)return;
+   if(!confirm(`¿Quitar la factura de «${inst.name}»? Se borrará el PDF guardado.`))return;
+   const prev=inst.doc;inst.doc=null;
+   try{await saveBook();}catch(e){inst.doc=prev;shipmentSetMsg(recId,'No se pudo quitar la factura: '+e.message,true);renderShipmentRegistry();return;}
+   if(prev.path){const {error}=await sb.storage.from(SHIP_BUCKET).remove([prev.path]);if(error)console.warn('No se pudo borrar el PDF:',error.message);}
+   shipmentSetMsg(recId,`Factura de «${inst.name}» quitada.`);renderShipmentRegistry();
+ });
+ box.querySelectorAll('[data-inst-add]').forEach(btn=>btn.onclick=async()=>{
+   const rec=shipmentFind(btn.dataset.instAdd);if(!rec)return;
+   const raw=prompt('Denominación de la nueva instancia de facturación:');if(raw===null)return;const name=raw.trim();
+   if(!name){alert('Escribí una denominación para la instancia.');return;}
+   const inst={id:uid(),name,custom:true,doc:null};shipmentInstances(rec).push(inst);shipmentOpen.add(String(rec.id));
+   try{await saveBook();shipmentSetMsg(rec.id,`Instancia «${name}» agregada. Ya podés subir su factura.`);}catch(e){rec.instances=rec.instances.filter(x=>x!==inst);shipmentSetMsg(rec.id,'No se pudo agregar la instancia: '+e.message,true);}
+   renderShipmentRegistry();
+ });
+ box.querySelectorAll('[data-inst-remove]').forEach(btn=>btn.onclick=async()=>{
+   const {rec,inst,recId}=getInst(btn.dataset.instRemove);if(!inst||!inst.custom)return;
+   if(!confirm(`¿Eliminar la instancia «${inst.name}»?${inst.doc?' También se borrará su factura PDF.':''}`))return;
+   const prev=[...rec.instances];rec.instances=rec.instances.filter(x=>x!==inst);
+   try{await saveBook();}catch(e){rec.instances=prev;shipmentSetMsg(recId,'No se pudo eliminar la instancia: '+e.message,true);renderShipmentRegistry();return;}
+   if(inst.doc?.path){const {error}=await sb.storage.from(SHIP_BUCKET).remove([inst.doc.path]);if(error)console.warn('No se pudo borrar el PDF:',error.message);}
+   shipmentSetMsg(recId,`Instancia «${inst.name}» eliminada.`);renderShipmentRegistry();
+ });
+}
+async function shipmentSaveEdits(id,root,btn){
+ const rec=shipmentFind(id);if(!rec||!root)return;
+ if(!currentUser){shipmentSetMsg(id,'Tenés que iniciar sesión para editar embarques.',true);return;}
+ const field=k=>root.querySelector(`[data-ship-field="${k}"]`)?.value.trim()||'';
+ const invoiceNumber=field('invoiceNumber'),container=field('container'),date=field('date'),label=field('label');
+ if(!invoiceNumber||!container||!date){shipmentSetMsg(id,'Completá N.º de factura, container y fecha estimada de ingreso.',true);return;}
+ const draft=entryDrafts['se'+id]||[];
+ const lines=draft.map(l=>({product:l.product,code:l.code||'',quantity:Math.max(1,Math.floor(Number(l.quantity)||1)),productKey:l.productKey})).filter(l=>l.product);
+ if(!lines.length||lines.length!==draft.length){shipmentSetMsg(id,'Elegí un producto válido en cada fila de productos.',true);return;}
+ for(const c of shipmentConsumed(rec)){
+  const qty=lines.filter(l=>c.code?norm(l.code)===norm(c.code):norm(l.product)===norm(c.product)).reduce((a,l)=>a+l.quantity,0);
+  if(qty<c.qty){shipmentSetMsg(id,`No se puede dejar ${c.product} con ${qty} unidades: ventas registradas ya tomaron ${c.qty} de este embarque.`,true);return;}
+ }
+ const prev=JSON.parse(JSON.stringify(rec));
+ Object.assign(rec,{invoiceNumber,container,date,estimatedDate:date,label,lines,updatedAt:new Date().toISOString(),updatedBy:currentUser?.email||'Usuario'});
+ if(btn)btn.disabled=true;
+ try{await saveBook();delete entryDrafts['se'+id];shipmentSetMsg(id,'Cambios del embarque guardados.');renderShipmentRegistry();renderShipmentCards();renderInventory();}
+ catch(e){Object.keys(rec).forEach(k=>delete rec[k]);Object.assign(rec,prev);shipmentSetMsg(id,'No se pudo guardar: '+e.message,true);if(btn)btn.disabled=false;}
+}
+async function shipmentUploadInvoice(rec,inst,file){
+ const id=String(rec.id);shipmentOpen.add(id);
+ if(!currentUser){shipmentSetMsg(id,'Tenés que iniciar sesión para cargar facturas.',true);return;}
+ if(file.type!=='application/pdf'&&!file.name.toLowerCase().endsWith('.pdf')){shipmentSetMsg(id,'El archivo debe ser PDF.',true);renderShipmentRegistry();return;}
+ shipmentSetMsg(id,`Leyendo la factura de «${inst.name}»…`);
+ let date='';try{date=shipmentInvoiceDate(await shipmentPdfText(file));}catch(e){console.warn('No se pudo leer el PDF:',e);}
+ shipmentSetMsg(id,`Guardando la factura de «${inst.name}»…`);
+ const path=`${rec.id}/${inst.id}_${uid()}.pdf`;
+ const {error:upErr}=await sb.storage.from(SHIP_BUCKET).upload(path,file,{contentType:'application/pdf',upsert:false});
+ if(upErr){shipmentSetMsg(id,'No se pudo guardar el PDF: '+upErr.message+'. Revisá que esté configurado el almacenamiento «embarques-facturas» en Supabase.',true);renderShipmentRegistry();return;}
+ const prevDoc=inst.doc||null;
+ inst.doc={fileName:file.name,path,date,dateSource:date?'pdf':'',uploadedAt:new Date().toISOString(),uploadedBy:currentUser?.email||'Usuario'};
+ try{await saveBook();}
+ catch(e){inst.doc=prevDoc;await sb.storage.from(SHIP_BUCKET).remove([path]);shipmentSetMsg(id,'No se pudo registrar la factura: '+e.message,true);renderShipmentRegistry();return;}
+ if(prevDoc?.path){const {error}=await sb.storage.from(SHIP_BUCKET).remove([prevDoc.path]);if(error)console.warn('No se pudo borrar el PDF anterior:',error.message);}
+ shipmentSetMsg(id,date?`Factura de «${inst.name}» cargada. Fecha leída del PDF: ${formatDateOnly(date)}.`:`Factura de «${inst.name}» cargada, pero no se pudo leer la fecha: ingresala a mano.`,!date);
+ renderShipmentRegistry();
+}
 let shipmentCalendarMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1);
 let shipmentCalendarSelected='';
 function shipmentISODate(raw){
