@@ -421,8 +421,15 @@ footer {text-align:center;color:var(--muted);padding:22px}
       <p class="muted">Subí el PDF de la factura. FITIN CAMPO intentará leer sus datos y productos; revisá y corregí los campos antes de registrar la venta.</p>
       <div class="sales-grid">
         <div><label for="salesInvoicePdf">Factura en PDF</label><input id="salesInvoicePdf" type="file" accept="application/pdf,.pdf"><small>Se conserva en un almacenamiento privado de Supabase.</small></div>
-        <div><label for="salesClient">Cliente</label><input id="salesClient" placeholder="Cliente de la factura"></div>
-        <div><label for="salesInvoiceDate">Fecha de factura</label><input id="salesInvoiceDate" type="date"></div>
+        <div><label for="salesPos">Punto de venta</label><input id="salesPos" inputmode="numeric" placeholder="00004"></div>
+        <div><label for="salesCompNro">Comp. Nro</label><input id="salesCompNro" inputmode="numeric" placeholder="00000065"></div>
+        <div><label for="salesInvoiceDate">Fecha de emisión</label><input id="salesInvoiceDate" type="date"></div>
+        <div><label for="salesCuit">CUIT del cliente</label><input id="salesCuit" inputmode="numeric" placeholder="20265503110"></div>
+        <div><label for="salesClient">Apellido y Nombre / Razón Social</label><input id="salesClient" placeholder="Cliente de la factura"></div>
+        <div><label for="salesIvaCond">Condición frente al IVA</label><input id="salesIvaCond" placeholder="Responsable Monotributo"></div>
+        <div><label for="salesAddress">Domicilio comercial</label><input id="salesAddress" placeholder="Calle, número, localidad"></div>
+        <div><label for="salesSaleCond">Condición de venta</label><input id="salesSaleCond" placeholder="Contado"></div>
+        <div><label for="salesInvoiceTotal">Importe total ($)</label><input id="salesInvoiceTotal" type="number" min="0" step="0.01" placeholder="292820,00"></div>
         <div><label for="salesDeliveryDate">Fecha de entrega del pedido</label><input id="salesDeliveryDate" type="date"></div>
       </div>
       <p id="salesPdfStatus" class="status" aria-live="polite"></p>
@@ -430,9 +437,10 @@ footer {text-align:center;color:var(--muted);padding:22px}
     </div>
     <div class="panel">
       <h2>Productos vendidos y demanda</h2>
-      <p class="muted">Verificá descripción, código, cantidad y precio unitario. El total de cada línea se calcula automáticamente.</p>
+      <p class="muted">Verificá producto, código, cantidad, unidad de medida, precio unitario, bonificación y alícuota de IVA. Los subtotales se calculan automáticamente.</p>
       <div class="toolbar"><button id="salesAddLine" class="secondary" type="button">Agregar producto</button><button id="salesNewProduct" class="secondary" type="button">Crear producto y código</button></div>
       <div id="salesLines" class="table-wrap"></div>
+      <p id="salesTotalCheck" class="sales-balance" aria-live="polite"></p>
     </div>
     <div class="panel">
       <h2>Asignación del stock para esta venta</h2>
@@ -444,7 +452,7 @@ footer {text-align:center;color:var(--muted);padding:22px}
     </div>
     <div class="panel">
       <h2>Registro de ventas</h2>
-      <p class="muted">Cada registro conserva número, fecha y hora de carga, factura, cliente, fecha de entrega, detalle de productos, precios y distribución de stock.</p>
+      <p class="muted">Cada registro conserva número, fecha y hora de carga, comprobante (punto de venta, número y fecha de emisión), datos del cliente (CUIT, razón social, condición frente al IVA, domicilio y condición de venta), fecha de entrega, detalle de productos, precios, importe total y distribución de stock.</p>
       <div id="salesTable" class="table-wrap"></div>
     </div>
   </section>
@@ -1708,7 +1716,79 @@ function salesFindProduct(line){
  const rows=salesProductRows();
  return rows.find(r=>line.code&&norm(r.code)===norm(line.code))||rows.find(r=>line.product&&norm(r.name)===norm(line.product));
 }
-function salesNewLine(data={}){return {id:salesUid(),product:data.product||'',code:data.code||'',quantity:Math.max(1,Number(data.quantity)||1),unitPrice:Math.max(0,numberValue(data.unitPrice)),allocations:[]};}
+function salesNewLine(data={}){return {id:salesUid(),product:data.product||'',code:data.code||'',invoiceDescription:data.invoiceDescription||'',quantity:Math.max(1,Math.round(Number(data.quantity)||1)),unit:data.unit||'unidades',unitPrice:Math.max(0,numberValue(data.unitPrice)),bonif:Math.max(0,numberValue(data.bonif)),ivaRate:Math.max(0,numberValue(data.ivaRate)),allocations:[]};}
+function salesLineSubtotal(l){return Math.round(numberValue(l.quantity)*numberValue(l.unitPrice)*(1-numberValue(l.bonif)/100)*100)/100;}
+function salesLineTotalIva(l){return Math.round(salesLineSubtotal(l)*(1+numberValue(l.ivaRate)/100)*100)/100;}
+function salesRecordTotal(r){const t=numberValue(r.invoiceTotal);return t>0?t:(r.items||[]).reduce((a,i)=>a+salesLineTotalIva(i),0);}
+function salesFormatCuit(v){const d=String(v||'').replace(/\D/g,'');return d.length===11?`${d.slice(0,2)}-${d.slice(2,10)}-${d.slice(10)}`:String(v||'');}
+/* Busca el producto en el listado de stock: primero por código, después por nombre exacto,
+   después por nombre contenido y por último por palabras en común. Así, si la factura no trae código,
+   se completa con el código registrado en el stock. */
+function salesMatchCatalog(code,desc){
+ const catalog=salesProductRows();const d=norm(desc);
+ const byCode=code&&catalog.find(p=>p.code&&norm(p.code)===norm(code));if(byCode)return byCode;
+ if(!d)return null;
+ const exact=catalog.find(p=>norm(p.name)===d);if(exact)return exact;
+ const contained=catalog.filter(p=>p.name&&(d.includes(norm(p.name))||norm(p.name).includes(d))).sort((a,b)=>String(b.name).length-String(a.name).length)[0];if(contained)return contained;
+ const STOP=new Set(['de','del','la','el','los','las','para','con','y','en','x','por','a']);
+ const words=v=>norm(v).replace(/[^a-z0-9ñ ]/g,' ').split(/\s+/).filter(w=>w.length>1&&!STOP.has(w));
+ const dw=new Set(words(desc));let best=null,bestScore=0;
+ catalog.forEach(p=>{const pw=words(p.name);if(!pw.length)return;const common=pw.filter(w=>dw.has(w)).length;const score=common/Math.max(pw.length,dw.size);if(common>=2&&score>bestScore){best=p;bestScore=score;}});
+ return bestScore>=0.6?best:null;
+}
+/* Lectura de facturas electrónicas (formato AFIP/ARCA): comprobante, cliente, productos e importe total */
+function salesParseAfip(text){
+ const out={pos:'',compNro:'',invoiceDate:'',cuit:'',client:'',ivaCond:'',address:'',saleCond:'',invoiceTotal:0,lines:[]};
+ const get=(src,re)=>{const m=String(src||'').match(re);return m?m[1].replace(/\s+/g,' ').trim():'';};
+ out.pos=get(text,/Punto\s+de\s+Venta\s*:?\s*(\d{1,5})/i);
+ out.compNro=get(text,/Comp\.?\s*N(?:ro|°|º)?\.?\s*:?\s*(\d{1,8})/i);
+ out.invoiceDate=salesDateISO(get(text,/Fecha\s+de\s+Emisi[oó]n\s*:?\s*(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/i));
+ out.invoiceTotal=numberValue(get(text,/Importe\s+Total\s*:?\s*\$?\s*([\d.,]+)/i));
+ const lines=String(text||'').split(/\r?\n/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
+ // Datos del cliente: el bloque que empieza en "Apellido y Nombre / Razón Social" (el de arriba es el emisor).
+ const ci=lines.findIndex(l=>/Apellido\s+y\s+Nombre\s*\/\s*Raz[oó]n\s+Social/i.test(l));
+ if(ci>=0){
+  let end=lines.findIndex((l,k)=>k>ci&&/Producto\s*\/\s*Servicio|^C[oó]digo\b/i.test(l));if(end<0)end=Math.min(lines.length,ci+8);
+  const block=lines.slice(ci,end).join('\n');
+  out.cuit=get(lines[ci],/CUI[TL]\s*:?\s*(\d{2}-?\d{8}-?\d)/i)||get(block,/CUI[TL]\s*:?\s*(\d{2}-?\d{8}-?\d)/i);
+  out.cuit=out.cuit.replace(/\D/g,'');
+  out.client=get(lines[ci],/Raz[oó]n\s+Social\s*:?\s*(.+)$/i);
+  out.ivaCond=get(block,/Condici[oó]n\s+frente\s+al\s+IVA\s*:?\s*(.+?)(?=\s+Domicilio|\s*$)/im);
+  out.address=get(block,/Domicilio(?:\s+Comercial)?\s*:?\s*(.+)$/im);
+  out.saleCond=get(block,/Condici[oó]n\s+de\s+venta\s*:?\s*(.+?)(?=\s+(?:Remito|Per[ií]odo|Fecha|N[°º]?\s*Remito)|\s*$)/im);
+ }
+ // Productos: filas entre el encabezado "Producto / Servicio" y los totales.
+ const hi=lines.findIndex(l=>/Producto\s*\/\s*Servicio/i.test(l));
+ if(hi>=0){
+  const word='[A-Za-zÁÉÍÓÚÜÑáéíóúüñ.]+';
+  const rowRe=new RegExp('^(.+?)\\s+(\\d+(?:[.,]\\d+)?)\\s+('+word+'(?:\\s+'+word+')*)\\s+([\\d.,]+)\\s+([\\d.,]+)\\s+((?:[\\d.,]+\\s+)*?)([\\d.,]+)(?:\\s+(\\d+(?:[.,]\\d+)?)\\s*%\\s+([\\d.,]+))?$');
+  for(let k=hi+1;k<lines.length;k++){
+   const ln=lines[k];
+   if(/^(?:Subtotal|Importe|Otros\s+Tributos|CAE|P[aá]g\.|Comprobante\s+Autorizado)/i.test(ln))break;
+   if(/^(?:Alicuota|IVA$)/i.test(ln))continue;
+   const m=ln.match(rowRe);
+   if(!m){ // descripción que continúa en otra línea
+    if(out.lines.length&&!/\d{3,}/.test(ln)&&ln.length<120){const last=out.lines[out.lines.length-1];last.invoiceDescription=(last.invoiceDescription+' '+ln).trim();}
+    continue;
+   }
+   let desc=m[1].trim(),code='';
+   const first=desc.split(' ')[0];
+   if(desc.includes(' ')&&(salesProductRows().some(p=>p.code&&norm(p.code)===norm(first))||/^(?=.*\d)[A-Z0-9][A-Z0-9-]*$|^[A-Z0-9]+-[A-Z0-9-]+$/.test(first))){code=first;desc=desc.slice(first.length).trim();}
+   out.lines.push({code,invoiceDescription:desc,quantity:numberValue(m[2]),unit:m[3].trim(),unitPrice:numberValue(m[4]),bonif:numberValue(m[5]),ivaRate:m[8]!==undefined?numberValue(m[8]):0});
+  }
+ }
+ out.lines=out.lines.map(l=>{const match=salesMatchCatalog(l.code,l.invoiceDescription)||salesMatchCatalog('',l.invoiceDescription);return salesNewLine({...l,product:match?.name||l.invoiceDescription,code:match?.code||l.code});});
+ return out;
+}
+function salesUpdateTotalCheck(){
+ const box=$('salesTotalCheck');if(!box)return;
+ const sum=Math.round(salesDraftLines.reduce((a,l)=>a+salesLineTotalIva(l),0)*100)/100;
+ const declared=numberValue($('salesInvoiceTotal')?.value);
+ if(!declared){box.className='sales-balance';box.textContent=`Suma de productos (con IVA): ${salesMoney(sum)}`;return;}
+ const ok=Math.abs(sum-declared)<=1;
+ box.className='sales-balance '+(ok?'ok':'bad');
+ box.textContent=ok?`Suma de productos ${salesMoney(sum)} — coincide con el importe total de la factura.`:`Suma de productos ${salesMoney(sum)} — no coincide con el importe total de la factura (${salesMoney(declared)}). Revisá cantidades, precios o alícuotas.`;
+}
 function salesMoney(v){return Number(v||0).toLocaleString('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:2});}
 function salesDateISO(raw){
  if(!raw)return '';
@@ -1743,17 +1823,26 @@ async function readSalesPdf(file){
  if(!window.pdfjsLib){$('salesPdfStatus').textContent='No se pudo cargar el lector PDF. Revisá la conexión y recargá la página.';return;}
  try{
   pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-  const bytes=await file.arrayBuffer();const pdf=await pdfjsLib.getDocument({data:bytes}).promise;let full='';
+  const bytes=await file.arrayBuffer();const pdf=await pdfjsLib.getDocument({data:bytes}).promise;let full='';const pageTexts=[];
   for(let n=1;n<=pdf.numPages;n++){
    const page=await pdf.getPage(n);const content=await page.getTextContent();const rows=new Map();
    content.items.forEach(item=>{const y=Math.round((item.transform?.[5]||0)/3)*3;if(!rows.has(y))rows.set(y,[]);rows.get(y).push({x:item.transform?.[4]||0,text:item.str||''});});
-   full+=[...rows.entries()].sort((a,b)=>b[0]-a[0]).map(([,parts])=>parts.sort((a,b)=>a.x-b.x).map(x=>x.text).join(' ')).join('\n')+'\n';
+   const pageText=[...rows.entries()].sort((a,b)=>b[0]-a[0]).map(([,parts])=>parts.sort((a,b)=>a.x-b.x).map(x=>x.text).join(' ')).join('\n')+'\n';
+   pageTexts.push(pageText);full+=pageText;
   }
   $('salesPdfText').textContent=full||'El PDF no contiene texto seleccionable. Si es un escaneo, el lector no puede extraerlo automáticamente.';
+  // Las facturas AFIP traen ORIGINAL, DUPLICADO y TRIPLICADO: se lee solo el original para no duplicar productos.
+  const originalPages=pageTexts.filter(t=>!/\b(?:DUPLICADO|TRIPLICADO)\b/i.test(t));
+  const mainText=(originalPages.length?originalPages:pageTexts.slice(0,1)).join('\n');
+  const afip=salesParseAfip(mainText);
   const parsed=salesParseInvoiceText(full);
-  if(parsed.client&&!$('salesClient').value)$('salesClient').value=parsed.client;
-  if(parsed.invoiceDate&&!$('salesInvoiceDate').value)$('salesInvoiceDate').value=parsed.invoiceDate;
+  if(!afip.lines.length&&parsed.lines.length)afip.lines=parsed.lines;
+  const fill=(id,v)=>{if(v!==undefined&&v!==null&&v!==''&&$(id))$(id).value=v;};
+  fill('salesPos',afip.pos);fill('salesCompNro',afip.compNro);fill('salesCuit',afip.cuit);
+  fill('salesClient',afip.client||parsed.client);fill('salesIvaCond',afip.ivaCond);fill('salesAddress',afip.address);fill('salesSaleCond',afip.saleCond);
+  fill('salesInvoiceDate',afip.invoiceDate||parsed.invoiceDate);fill('salesInvoiceTotal',afip.invoiceTotal?afip.invoiceTotal.toFixed(2):'');
   if(parsed.deliveryDate&&!$('salesDeliveryDate').value)$('salesDeliveryDate').value=parsed.deliveryDate;
+  parsed.lines=afip.lines;
   if(parsed.lines.length)salesDraftLines=parsed.lines;
   else if(!salesDraftLines.length)salesDraftLines=[salesNewLine()];
   renderSalesLines();renderSalesAllocations();
@@ -1785,14 +1874,20 @@ function renderSalesLines(){
  const box=$('salesLines');if(!box)return;
  if(!salesDraftLines.length)salesDraftLines=[salesNewLine()];
  const catalog = buildRequestCatalog();
- box.innerHTML='<table class="request-lines"><thead><tr><th>Producto vendido</th><th>Código</th><th>Cantidad / Demanda</th><th>Precio unitario</th><th>Total</th><th></th></tr></thead><tbody>'+salesDraftLines.map(l=>{
+ box.innerHTML='<table class="request-lines"><thead><tr><th>Producto vendido</th><th>Código</th><th>Cantidad / Demanda</th><th>U. medida</th><th>Precio unit.</th><th>% Bonif.</th><th>Subtotal</th><th>Alícuota IVA (%)</th><th>Subtotal c/IVA</th><th></th></tr></thead><tbody>'+salesDraftLines.map(l=>{
    const selected = catalog.find(p => (l.code && norm(p.code)===norm(l.code)) || (!l.code && norm(p.name)===norm(l.product)));
-   return `<tr><td><select data-sales-product="${l.id}" aria-label="Elegir producto"><option value="">— Elegir producto —</option>${catalog.map(p=>`<option value="${esc(p.key)}" ${(selected?.key===p.key)?'selected':''}>${esc(p.name)}</option>`).join('')}</select></td><td><input data-sales-code="${l.id}" value="${esc(selected?.code||l.code)}" readonly placeholder="Código automático"></td><td><input type="number" min="1" step="1" data-sales-qty="${l.id}" value="${l.quantity}"></td><td><input type="number" min="0" step="0.01" data-sales-price="${l.id}" value="${l.unitPrice}"></td><td><strong>${salesMoney(l.quantity*l.unitPrice)}</strong></td><td><button type="button" class="danger" data-sales-remove="${l.id}">Quitar</button></td></tr>`;
+   const invoiceNote=(l.invoiceDescription&&norm(l.invoiceDescription)!==norm(selected?.name||'')?`<small class="muted">En la factura: ${esc(l.invoiceDescription)}</small>`:'')+(!selected&&(l.invoiceDescription||l.product)?'<small class="status error">No se encontró en el listado de stock: elegí el producto para completar el código.</small>':'');
+   return `<tr><td><select data-sales-product="${l.id}" aria-label="Elegir producto"><option value="">— Elegir producto —</option>${catalog.map(p=>`<option value="${esc(p.key)}" ${(selected?.key===p.key)?'selected':''}>${esc(p.name)}</option>`).join('')}</select>${invoiceNote}</td><td><input data-sales-code="${l.id}" value="${esc(selected?.code||l.code)}" readonly placeholder="Código automático"></td><td><input type="number" min="1" step="1" data-sales-qty="${l.id}" value="${l.quantity}"></td><td><input data-sales-unit="${l.id}" value="${esc(l.unit||'')}" style="min-width:90px"></td><td><input type="number" min="0" step="0.01" data-sales-price="${l.id}" value="${l.unitPrice}"></td><td><input type="number" min="0" max="100" step="0.01" data-sales-bonif="${l.id}" value="${numberValue(l.bonif)}" style="max-width:90px"></td><td><strong>${salesMoney(salesLineSubtotal(l))}</strong></td><td><input type="number" min="0" step="0.01" data-sales-iva="${l.id}" value="${numberValue(l.ivaRate)}" style="max-width:90px"></td><td><strong>${salesMoney(salesLineTotalIva(l))}</strong></td><td><button type="button" class="danger" data-sales-remove="${l.id}">Quitar</button></td></tr>`;
  }).join('')+'</tbody></table>';
- box.querySelectorAll('[data-sales-product]').forEach(el=>el.onchange=()=>{const l=salesDraftLines.find(x=>x.id===el.dataset.salesProduct);const p=catalog.find(x=>x.key===el.value);l.product=p?.name||'';l.code=p?.code||'';l.allocations=[];renderSalesLines();renderSalesAllocations();});
- box.querySelectorAll('[data-sales-qty]').forEach(el=>el.onchange=()=>{const l=salesDraftLines.find(x=>x.id===el.dataset.salesQty);l.quantity=Math.max(1,Math.floor(Number(el.value)||1));renderSalesLines();renderSalesAllocations();});
- box.querySelectorAll('[data-sales-price]').forEach(el=>el.onchange=()=>{const l=salesDraftLines.find(x=>x.id===el.dataset.salesPrice);l.unitPrice=Math.max(0,numberValue(el.value));renderSalesLines();});
+ const find=id=>salesDraftLines.find(x=>x.id===id);
+ box.querySelectorAll('[data-sales-product]').forEach(el=>el.onchange=()=>{const l=find(el.dataset.salesProduct);const p=catalog.find(x=>x.key===el.value);l.product=p?.name||'';l.code=p?.code||'';l.allocations=[];renderSalesLines();renderSalesAllocations();});
+ box.querySelectorAll('[data-sales-qty]').forEach(el=>el.onchange=()=>{const l=find(el.dataset.salesQty);l.quantity=Math.max(1,Math.floor(Number(el.value)||1));renderSalesLines();renderSalesAllocations();});
+ box.querySelectorAll('[data-sales-unit]').forEach(el=>el.onchange=()=>{find(el.dataset.salesUnit).unit=el.value.trim();});
+ box.querySelectorAll('[data-sales-price]').forEach(el=>el.onchange=()=>{find(el.dataset.salesPrice).unitPrice=Math.max(0,numberValue(el.value));renderSalesLines();});
+ box.querySelectorAll('[data-sales-bonif]').forEach(el=>el.onchange=()=>{find(el.dataset.salesBonif).bonif=Math.min(100,Math.max(0,numberValue(el.value)));renderSalesLines();});
+ box.querySelectorAll('[data-sales-iva]').forEach(el=>el.onchange=()=>{find(el.dataset.salesIva).ivaRate=Math.max(0,numberValue(el.value));renderSalesLines();});
  box.querySelectorAll('[data-sales-remove]').forEach(el=>el.onclick=()=>{salesDraftLines=salesDraftLines.filter(x=>x.id!==el.dataset.salesRemove);renderSalesLines();renderSalesAllocations();});
+ salesUpdateTotalCheck();
 }
 function renderSalesAllocations(){
  const box=$('salesAllocations');if(!box)return;
@@ -1814,15 +1909,19 @@ function renderSalesTable(){
  const box=$('salesTable');if(!box)return;
  if(!salesStorageReady){box.innerHTML=`<p class="status error">${salesStorageError?'No se pudo acceder al registro de ventas: '+esc(salesStorageError):'Falta configurar la tabla privada de ventas y el almacenamiento de facturas en Supabase.'}</p><p class="muted">Ejecutá el archivo SQL de configuración incluido con esta actualización y luego recargá FITIN CAMPO.</p>`;return;}
  if(!salesRecords.length){box.innerHTML='<p class="muted">Todavía no hay ventas registradas.</p>';return;}
- box.innerHTML='<table><thead><tr><th>N.º de registro</th><th>Fecha y hora de registro</th><th>Cliente</th><th>Fecha de factura</th><th>Fecha de entrega</th><th>Productos / demanda / precio</th><th>Total</th><th>Factura / acciones</th></tr></thead><tbody>'+salesRecords.map(r=>`<tr><td><strong>${esc(r.number)}</strong></td><td>${esc(formatRequestDate(r.createdAt))}</td><td>${esc(r.client||'—')}</td><td>${esc(formatDateOnly(r.invoiceDate))}</td><td>${esc(formatDateOnly(r.deliveryDate))}</td><td>${(r.items||[]).map(i=>`${esc(i.product)} (${esc(i.code||'—')}) · Demanda: ${esc(i.quantity)} u. × ${salesMoney(i.unitPrice)} = ${salesMoney(numberValue(i.quantity)*numberValue(i.unitPrice))}`).join('<br>')}</td><td>${salesMoney((r.items||[]).reduce((a,i)=>a+numberValue(i.quantity)*numberValue(i.unitPrice),0))}</td><td><div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="secondary" data-sales-pdf="${esc(r.id)}">Ver PDF</button><button type="button" class="danger" data-sales-delete="${esc(r.id)}">Eliminar</button></div></td></tr>`).join('')+'</tbody></table>';
+ box.innerHTML='<table><thead><tr><th>N.º de registro</th><th>Fecha y hora de registro</th><th>Comprobante</th><th>Cliente</th><th>Fecha de entrega</th><th>Productos / demanda / precio</th><th>Importe total</th><th>Factura / acciones</th></tr></thead><tbody>'+salesRecords.map(r=>{
+  const comp=(r.pos||r.compNro)?`${esc(String(r.pos||'').padStart(5,'0'))}-${esc(String(r.compNro||'').padStart(8,'0'))}`:'—';
+  const items=(r.items||[]).map(i=>{const iva=numberValue(i.ivaRate);const bon=numberValue(i.bonif);return `${esc(i.product)} (${esc(i.code||'—')})${i.invoiceDescription&&norm(i.invoiceDescription)!==norm(i.product)?' <small class="muted">[factura: '+esc(i.invoiceDescription)+']</small>':''} · Demanda: ${esc(i.quantity)} ${esc(i.unit||'u.')} × ${salesMoney(i.unitPrice)}${bon?' − '+esc(bon)+'%':''} = ${salesMoney(salesLineSubtotal(i))}${iva?' · IVA '+esc(iva)+'% → '+salesMoney(salesLineTotalIva(i)):''}`;}).join('<br>');
+  return `<tr><td><strong>${esc(r.number)}</strong></td><td>${esc(formatRequestDate(r.createdAt))}</td><td><strong>${comp}</strong><br><small>Emisión: ${esc(formatDateOnly(r.invoiceDate))}</small>${r.saleCond?'<br><small>Cond. de venta: '+esc(r.saleCond)+'</small>':''}</td><td><strong>${esc(r.client||'—')}</strong>${r.cuit?'<br><small>CUIT: '+esc(salesFormatCuit(r.cuit))+'</small>':''}${r.ivaCond?'<br><small>'+esc(r.ivaCond)+'</small>':''}${r.address?'<br><small>'+esc(r.address)+'</small>':''}</td><td>${esc(formatDateOnly(r.deliveryDate))}</td><td>${items}</td><td>${salesMoney(salesRecordTotal(r))}</td><td><div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="secondary" data-sales-pdf="${esc(r.id)}">Ver PDF</button>${isAdminUser()?`<button type="button" class="danger" data-sales-delete="${esc(r.id)}">Eliminar</button>`:''}</div></td></tr>`;
+ }).join('')+'</tbody></table>';
  box.querySelectorAll('[data-sales-pdf]').forEach(btn=>btn.onclick=async()=>{const rec=salesRecords.find(x=>x.id===btn.dataset.salesPdf);if(!rec?.pdfPath)return;btn.disabled=true;try{const {data,error}=await sb.storage.from(SALES_BUCKET).createSignedUrl(rec.pdfPath,60);if(error)throw error;window.open(data.signedUrl,'_blank','noopener');}catch(e){alert('No se pudo abrir la factura: '+e.message);}finally{btn.disabled=false;}});
  box.querySelectorAll('[data-sales-delete]').forEach(btn=>btn.onclick=()=>deleteSale(btn.dataset.salesDelete,btn));
 }
 /* Eliminar venta: devuelve al stock las cantidades consumidas de cada origen y borra la factura PDF */
 async function deleteSale(saleId,btn){
- if(!currentUser){alert('Tenés que iniciar sesión para eliminar ventas.');return;}
+ if(!isAdminUser()){alert('Solo el administrador puede eliminar ventas.');return;}
  const rec=salesRecords.find(x=>x.id===saleId);if(!rec)return;
- const total=(rec.items||[]).reduce((a,i)=>a+numberValue(i.quantity)*numberValue(i.unitPrice),0);
+ const total=salesRecordTotal(rec);
  if(!confirm(`¿Eliminar ${rec.number} de ${rec.client||'cliente sin identificar'} por ${salesMoney(total)}?\n\n• Las cantidades vuelven al stock de donde se descontaron.\n• Se borra la factura PDF.\n\nEsta acción no se puede deshacer.`))return;
  if(btn){btn.disabled=true;btn.textContent='Eliminando…';}
  let stockRestored=false,removedMoves=[];
@@ -1876,8 +1975,9 @@ async function registerSale(){
  for(const line of salesDraftLines){const sum=(line.allocations||[]).reduce((a,x)=>a+numberValue(x.quantity),0);if(sum!==Number(line.quantity)){$('salesStatus').textContent=`La asignación de ${line.product} debe cubrir exactamente ${line.quantity} unidades.`;return;}}
  // Revalidar contra el saldo disponible antes de guardar, incluyendo otras líneas de esta misma factura.
  for(const line of salesDraftLines){for(const a of line.allocations||[]){const opt=salesSourceOptions(line).find(o=>o.key===a.key);const max=Math.max(0,(opt?.available||0)-salesSelectedForSource(a.key,line.id));if(!opt||opt.eligible===false||numberValue(a.quantity)>max){$('salesStatus').textContent=`El origen ${a.key} ya no tiene saldo suficiente para ${line.product}. Actualizá los datos y volvé a asignar.`;return;}}}
- const saleId=salesUid(),createdAt=new Date().toISOString();const items=salesDraftLines.map(l=>({product:l.product,code:l.code,quantity:Number(l.quantity),unitPrice:Number(l.unitPrice)||0,total:Number(l.quantity)*(Number(l.unitPrice)||0),allocations:(l.allocations||[]).map(a=>({...a}))}));
- const payload={client,invoiceDate,deliveryDate,items,fileName:salesPdfFile.name,createdAt,createdBy:currentUser.email||'Usuario'};
+ const saleId=salesUid(),createdAt=new Date().toISOString();const items=salesDraftLines.map(l=>({product:l.product,code:l.code,invoiceDescription:l.invoiceDescription||'',quantity:Number(l.quantity),unit:l.unit||'',unitPrice:Number(l.unitPrice)||0,bonif:numberValue(l.bonif),ivaRate:numberValue(l.ivaRate),total:salesLineSubtotal(l),subtotal:salesLineSubtotal(l),subtotalWithIva:salesLineTotalIva(l),allocations:(l.allocations||[]).map(a=>({...a}))}));
+ const invoiceFields={pos:$('salesPos').value.trim(),compNro:$('salesCompNro').value.trim(),cuit:$('salesCuit').value.replace(/\D/g,''),ivaCond:$('salesIvaCond').value.trim(),address:$('salesAddress').value.trim(),saleCond:$('salesSaleCond').value.trim(),invoiceTotal:numberValue($('salesInvoiceTotal').value)};
+ const payload={client,invoiceDate,deliveryDate,...invoiceFields,items,fileName:salesPdfFile.name,createdAt,createdBy:currentUser.email||'Usuario'};
  const path=`${currentUser.id}/${saleId}.pdf`;$('salesRegisterBtn').disabled=true;$('salesStatus').textContent='Guardando factura y venta…';let uploaded=false,inserted=false,stockCommitted=false;
  try{
   const {error:uploadError}=await sb.storage.from(SALES_BUCKET).upload(path,salesPdfFile,{contentType:'application/pdf',upsert:false});if(uploadError)throw new Error('No se pudo guardar el PDF: '+uploadError.message);uploaded=true;
@@ -1896,7 +1996,7 @@ async function registerSale(){
     stockSaveWarning=' El stock quedó actualizado; Supabase informó además: '+e.message;
   }
   salesRecords.unshift({...payload,id:saleId,pdfPath:path,createdAt,dbNumber:dbRow.numero});
-  salesDraftLines=[salesNewLine()];salesPdfFile=null;$('salesInvoicePdf').value='';$('salesClient').value='';$('salesInvoiceDate').value='';$('salesDeliveryDate').value='';$('salesPdfText').textContent='Todavía no se cargó una factura.';$('salesPdfStatus').textContent='';
+  salesDraftLines=[salesNewLine()];salesPdfFile=null;$('salesInvoicePdf').value='';['salesClient','salesInvoiceDate','salesDeliveryDate','salesPos','salesCompNro','salesCuit','salesIvaCond','salesAddress','salesSaleCond','salesInvoiceTotal'].forEach(id=>{if($(id))$(id).value='';});$('salesPdfText').textContent='Todavía no se cargó una factura.';$('salesPdfStatus').textContent='';
   renderSalesLines();renderSalesAllocations();renderSalesTable();renderInventory();
   $('salesStatus').textContent=`Venta ${number} registrada. La demanda quedó asentada y el stock fue descontado según los orígenes elegidos.${stockSaveWarning}`;
  }catch(e){
@@ -1909,6 +2009,7 @@ $('salesInvoicePdf')?.addEventListener('change',e=>{const f=e.target.files?.[0];
 $('salesAddLine')?.addEventListener('click',()=>{salesDraftLines.push(salesNewLine());renderSalesLines();renderSalesAllocations();});
 $('salesNewProduct')?.addEventListener('click',createManualProduct);
 $('salesDeliveryDate')?.addEventListener('change',renderSalesAllocations);
+$('salesInvoiceTotal')?.addEventListener('input',salesUpdateTotalCheck);
 $('salesRegisterBtn')?.addEventListener('click',registerSale);
 
 function renderAvailabilityOptions() {
