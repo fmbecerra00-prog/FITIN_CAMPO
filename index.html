@@ -1814,8 +1814,55 @@ function renderSalesTable(){
  const box=$('salesTable');if(!box)return;
  if(!salesStorageReady){box.innerHTML=`<p class="status error">${salesStorageError?'No se pudo acceder al registro de ventas: '+esc(salesStorageError):'Falta configurar la tabla privada de ventas y el almacenamiento de facturas en Supabase.'}</p><p class="muted">Ejecutá el archivo SQL de configuración incluido con esta actualización y luego recargá FITIN CAMPO.</p>`;return;}
  if(!salesRecords.length){box.innerHTML='<p class="muted">Todavía no hay ventas registradas.</p>';return;}
- box.innerHTML='<table><thead><tr><th>N.º de registro</th><th>Fecha y hora de registro</th><th>Cliente</th><th>Fecha de factura</th><th>Fecha de entrega</th><th>Productos / demanda / precio</th><th>Total</th><th>Factura</th></tr></thead><tbody>'+salesRecords.map(r=>`<tr><td><strong>${esc(r.number)}</strong></td><td>${esc(formatRequestDate(r.createdAt))}</td><td>${esc(r.client||'—')}</td><td>${esc(formatDateOnly(r.invoiceDate))}</td><td>${esc(formatDateOnly(r.deliveryDate))}</td><td>${(r.items||[]).map(i=>`${esc(i.product)} (${esc(i.code||'—')}) · Demanda: ${esc(i.quantity)} u. × ${salesMoney(i.unitPrice)} = ${salesMoney(numberValue(i.quantity)*numberValue(i.unitPrice))}`).join('<br>')}</td><td>${salesMoney((r.items||[]).reduce((a,i)=>a+numberValue(i.quantity)*numberValue(i.unitPrice),0))}</td><td><button type="button" class="secondary" data-sales-pdf="${esc(r.id)}">Ver PDF</button></td></tr>`).join('')+'</tbody></table>';
+ box.innerHTML='<table><thead><tr><th>N.º de registro</th><th>Fecha y hora de registro</th><th>Cliente</th><th>Fecha de factura</th><th>Fecha de entrega</th><th>Productos / demanda / precio</th><th>Total</th><th>Factura / acciones</th></tr></thead><tbody>'+salesRecords.map(r=>`<tr><td><strong>${esc(r.number)}</strong></td><td>${esc(formatRequestDate(r.createdAt))}</td><td>${esc(r.client||'—')}</td><td>${esc(formatDateOnly(r.invoiceDate))}</td><td>${esc(formatDateOnly(r.deliveryDate))}</td><td>${(r.items||[]).map(i=>`${esc(i.product)} (${esc(i.code||'—')}) · Demanda: ${esc(i.quantity)} u. × ${salesMoney(i.unitPrice)} = ${salesMoney(numberValue(i.quantity)*numberValue(i.unitPrice))}`).join('<br>')}</td><td>${salesMoney((r.items||[]).reduce((a,i)=>a+numberValue(i.quantity)*numberValue(i.unitPrice),0))}</td><td><div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="secondary" data-sales-pdf="${esc(r.id)}">Ver PDF</button><button type="button" class="danger" data-sales-delete="${esc(r.id)}">Eliminar</button></div></td></tr>`).join('')+'</tbody></table>';
  box.querySelectorAll('[data-sales-pdf]').forEach(btn=>btn.onclick=async()=>{const rec=salesRecords.find(x=>x.id===btn.dataset.salesPdf);if(!rec?.pdfPath)return;btn.disabled=true;try{const {data,error}=await sb.storage.from(SALES_BUCKET).createSignedUrl(rec.pdfPath,60);if(error)throw error;window.open(data.signedUrl,'_blank','noopener');}catch(e){alert('No se pudo abrir la factura: '+e.message);}finally{btn.disabled=false;}});
+ box.querySelectorAll('[data-sales-delete]').forEach(btn=>btn.onclick=()=>deleteSale(btn.dataset.salesDelete,btn));
+}
+/* Eliminar venta: devuelve al stock las cantidades consumidas de cada origen y borra la factura PDF */
+async function deleteSale(saleId,btn){
+ if(!currentUser){alert('Tenés que iniciar sesión para eliminar ventas.');return;}
+ const rec=salesRecords.find(x=>x.id===saleId);if(!rec)return;
+ const total=(rec.items||[]).reduce((a,i)=>a+numberValue(i.quantity)*numberValue(i.unitPrice),0);
+ if(!confirm(`¿Eliminar ${rec.number} de ${rec.client||'cliente sin identificar'} por ${salesMoney(total)}?\n\n• Las cantidades vuelven al stock de donde se descontaron.\n• Se borra la factura PDF.\n\nEsta acción no se puede deshacer.`))return;
+ if(btn){btn.disabled=true;btn.textContent='Eliminando…';}
+ let stockRestored=false,removedMoves=[];
+ try{
+  // Trabaja sobre los datos más recientes para no pisar cambios de otra persona.
+  await loadBook();
+  const fresh=salesRecords.find(x=>x.id===saleId);
+  if(!fresh)throw new Error('La venta ya no existe: probablemente otra persona la eliminó.');
+  const pdfPath=fresh.pdfPath;
+  // 1) Devolver el stock: se quitan los consumos de esta venta (cada uno guarda su origen).
+  removedMoves=(book.ventasConsumos||[]).filter(m=>m.saleId===saleId);
+  if(removedMoves.length){
+   book.ventasConsumos=(book.ventasConsumos||[]).filter(m=>m.saleId!==saleId);
+   try{await saveBook();}catch(e){
+    const {data:checkState}=await sb.from('app_state').select('data').eq('id',1).maybeSingle();
+    const stillThere=(checkState?.data?.ventasConsumos||[]).some(m=>m.saleId===saleId);
+    if(stillThere){book.ventasConsumos=[...(book.ventasConsumos||[]),...removedMoves];throw new Error('No se pudo devolver el stock: '+e.message);}
+   }
+  }
+  stockRestored=true;
+  // 2) Borrar el registro de la venta (se verifica que Supabase realmente lo haya borrado).
+  const {data:deleted,error:deleteError}=await sb.from('ventas').delete().eq('id',saleId).select('id');
+  if(deleteError)throw new Error('No se pudo eliminar el registro de venta: '+deleteError.message);
+  if(!deleted||!deleted.length)throw new Error('Supabase no permitió eliminar el registro de venta. Falta la política DELETE de la tabla ventas.');
+  // 3) Borrar la factura PDF.
+  let pdfWarning='';
+  if(pdfPath){const {error:pdfError}=await sb.storage.from(SALES_BUCKET).remove([pdfPath]);if(pdfError)pdfWarning=' La venta se eliminó, pero no se pudo borrar el PDF: '+pdfError.message;}
+  salesRecords=salesRecords.filter(x=>x.id!==saleId);
+  renderSalesTable();renderSalesAllocations();renderInventory();
+  $('salesStatus').textContent=`Venta ${fresh.number} eliminada. Las cantidades volvieron al stock de sus orígenes.${pdfWarning}`;
+ }catch(e){
+  // Si el stock ya se devolvió pero la venta no se pudo borrar, se vuelve a descontar para no dejar datos inconsistentes.
+  if(stockRestored&&removedMoves.length){
+   book.ventasConsumos=[...(book.ventasConsumos||[]),...removedMoves];
+   try{await saveBook();}catch(e2){e.message+=' ATENCIÓN: el stock quedó devuelto pero la venta sigue registrada; avisá al administrador. ('+e2.message+')';}
+  }
+  renderSalesTable();renderInventory();
+  alert(e.message||String(e));
+  $('salesStatus').textContent=e.message||String(e);
+ }finally{if(btn&&btn.isConnected){btn.disabled=false;btn.textContent='Eliminar';}}
 }
 async function registerSale(){
  if(!currentUser){$('salesStatus').textContent='Tenés que iniciar sesión para registrar ventas.';return;}
