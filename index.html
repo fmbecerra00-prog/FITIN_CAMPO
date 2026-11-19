@@ -1991,7 +1991,8 @@ async function registerSale(){
  try{
   const {error:uploadError}=await sb.storage.from(SALES_BUCKET).upload(path,salesPdfFile,{contentType:'application/pdf',upsert:false});if(uploadError)throw new Error('No se pudo guardar el PDF: '+uploadError.message);uploaded=true;
   const {data:dbRow,error:insertError}=await sb.from('ventas').insert({id:saleId,payload,pdf_path:path,created_by:currentUser.id}).select('numero').single();if(insertError)throw new Error('No se pudo crear el registro de venta: '+insertError.message);inserted=true;
-  const number='VEN-'+String(dbRow.numero).padStart(5,'0');payload.number=number;
+  const compDigits=String(invoiceFields.compNro||'').replace(/\D/g,'');
+  const number=compDigits?compDigits.padStart(8,'0'):'VEN-'+String(dbRow.numero).padStart(5,'0');payload.number=number; // N.º de registro = Comp. Nro de la factura
   const {error:updateError}=await sb.from('ventas').update({payload}).eq('id',saleId);if(updateError)throw new Error('La venta se creó, pero no se pudo completar el número: '+updateError.message);
   const moves=items.flatMap(item=>item.allocations.map(a=>({saleId,product:item.product,code:item.code,sourceType:a.sourceType,sourceId:a.sourceId||'',quantity:a.quantity,createdAt})));
   book.ventasConsumos=[...(book.ventasConsumos||[]),...moves];
