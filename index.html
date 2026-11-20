@@ -200,6 +200,11 @@ footer {text-align:center;color:var(--muted);padding:22px}
 .ship-record.is-received input,.ship-record.is-received select{background:#f8f9fb;color:#7c8594}
 .ship-head{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:flex-start}
 .ship-head h3{margin:0 0 4px}.ship-meta{margin:2px 0 4px;line-height:1.6}
+.ship-origin{display:inline-block;margin:4px 0 2px;padding:2px 8px;border-radius:6px;background:#eef4e4;color:#4a6418;font-weight:600}
+.cons-sold-list{margin:0 0 6px;padding:0;list-style:none}.cons-sold-list li{margin:0 0 3px}
+.cons-sold-date{color:#6b7280;font-size:12px}.cons-left{margin-top:6px;padding-top:6px;border-top:1px dashed var(--border)}
+.cons-left strong,.cons-sold-title{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.02em;color:#4a6418;margin-bottom:2px}
+.cons-left-zero{color:#9aa3b2}
 .ship-badge{display:inline-block;font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;background:#fff4dc;color:#8a5a13;margin-left:8px}
 .ship-record.is-received .ship-badge{background:#e3e6eb;color:#6b7280}
 .ship-foot{display:flex;justify-content:flex-end;margin-top:6px}
@@ -413,7 +418,7 @@ footer {text-align:center;color:var(--muted);padding:22px}
   </section>
   <section id="embarquesTab" class="hidden">
     <div class="panel"><h2>Calendario de ingresos de mercadería</h2><p class="muted">Visualizá las fechas estimadas y los ingresos confirmados. Seleccioná un día para ver sus embarques.</p><div id="shipmentCalendar" class="shipment-calendar"></div></div><div class="panel"><h2>Próximos embarques</h2><p class="muted">Avisos calculados automáticamente a partir de la fecha estimada de ingreso.</p><div id="shipmentCards" class="shipment-cards"></div></div>
-    <div class="panel"><h2>Registrar embarque</h2><p class="muted">La fecha y hora de registro se asignan automáticamente al guardar.</p>
+    <div class="panel"><h2>Registrar embarque</h2><p class="muted">La fecha y hora de registro se asignan automáticamente al guardar. Los embarques cargados en el registro de stock (una hoja cuyo nombre contenga «Embarque», o columnas «Embarque», «Container» o «En tránsito» de la hoja de inventario) se registran solos en «Embarques registrados»; usá este formulario para ingresar embarques nuevos a mano.</p>
       <div class="form-grid"><div><label for="shipmentInvoice">N.º de factura</label><input id="shipmentInvoice" placeholder="Ej. 7693083-202"></div><div><label for="shipmentContainer">Container</label><input id="shipmentContainer" placeholder="Ej. ZIMU1234567"></div><div><label for="shipmentDate">Fecha estimada de ingreso</label><input id="shipmentDate" type="date"></div><div><label for="shipmentLabel">Identificación / referencia (opcional)</label><input id="shipmentLabel" placeholder="Ej. 3er contenedor"></div></div><p class="muted">Al registrarlo se crean las instancias de facturación (FC Proveedor, Transporte marítimo, Comex aduana, ARCA, Honorarios del despachante y Transporte interno). Las facturas se cargan después, desde «Embarques registrados».</p>
       <div class="toolbar"><button type="button" id="shipmentAddLine">Agregar producto</button><button type="button" class="secondary" id="shipmentNewProduct">Crear producto y código</button><button type="button" id="shipmentSave">Registrar embarque</button></div>
       <div id="shipmentLines" class="table-wrap"></div><p id="shipmentStatus" class="status"></p>
@@ -917,6 +922,8 @@ async function loadBook() {
     if(salesResult.error){salesStorageError=salesResult.error.message;}
     else {salesRecords=(salesResult.data||[]).map(r=>({...((r.payload&&typeof r.payload==="object")?r.payload:{}),id:r.id,number:r.payload?.number||("VEN-"+String(r.numero).padStart(5,"0")),pdfPath:r.pdf_path,createdAt:r.created_at,createdBy:r.created_by,dbNumber:r.numero}));salesStorageReady=true;}
   }
+  // Los embarques de la hoja se registran con un id estable, así las ventas pueden tomarlos aunque todavía no se hayan guardado.
+  try{if(syncShipmentsFromSheets())shipSyncPendingSave=true;}catch(e){console.warn(e);}
 }
 
 function availabilityDateLabel() {
@@ -980,7 +987,7 @@ function readLocalCopy() {
 function clearLocalCopy() { try { localStorage.removeItem(LOCAL_COPY_KEY); } catch (e) {} }
 
 async function saveBookOnce() {
-  syncConsignments();
+  syncSheetsToPage();
   if(!currentUser) throw new Error(PUBLIC_MODE?"Para guardar solicitudes desde el acceso público hay que habilitar una tabla/política pública segura en Supabase; no se permite sobrescribir el libro completo sin iniciar sesión.":"Tu sesión no está activa. Volvé a iniciar sesión.");
 
   // Nunca guardar el diseño dentro de app_state: así los usuarios operativos no pueden modificarlo.
@@ -1190,7 +1197,7 @@ function showTab(id) {
 
 let recordsAutosaveTimer=null;
 function refreshDerivedViewsAfterRecordEdit(){
-  syncConsignments();
+  syncSheetsToPage();
   stampAvailabilityUpdate();
   try{setupProductControls();}catch(e){console.warn("No se pudieron actualizar los selectores de productos",e);}
   renderInventory();
@@ -1218,7 +1225,9 @@ function renderSheetSelect() {
   if(global) { global.innerHTML=options; global.value=String(book.active); }
 }
 function renderAll() {
-  syncConsignments();
+  // Si la hoja trae embarques o consignaciones nuevas, se registran y se guardan enseguida.
+  const importedFromSheets=syncSheetsToPage()||shipSyncPendingSave; shipSyncPendingSave=false;
+  if(importedFromSheets && currentUser && !PUBLIC_MODE) saveBook().catch(e=>console.warn("No se pudieron guardar los registros importados de las hojas:",e));
   renderSheetSelect();
   renderAvailabilityDates();
   renderRecords();
@@ -1549,12 +1558,15 @@ function inventoryRows() {
     if(!grouped.has(key)) grouped.set(key,{key,name,code,trenque:0,consignacion:0,fabricacion:0,legacyEmbarques:0,shipmentValues:{},embarques:0,demanda:0});
     const item=grouped.get(key); if(!item.code&&code)item.code=code; return item;
   };
+  // Si la columna de embarques de la hoja ya se importó como embarque, se cuenta solo una vez (como embarque registrado).
+  const invSheetName=book.sheets[c.sheet]?.name;
+  const legacyShipLinked=!!loc.embarques&&(book.embarques||[]).some(r=>r.sheetKey===shipSheetKey(invSheetName,loc.embarques)||r.sheetKeyDetached===shipSheetKey(invSheetName,loc.embarques));
   activeRows(c.sheet).forEach(r=>{
     const item=ensure(r[c.name],c.code?r[c.code]:''); if(!item)return;
     item.trenque+=loc.trenque?numberValue(r[loc.trenque]):0;
     item.consignacion+=loc.consignacion?numberValue(r[loc.consignacion]):0;
     item.fabricacion+=loc.fabricacion?numberValue(r[loc.fabricacion]):0;
-    item.legacyEmbarques+=loc.embarques?numberValue(r[loc.embarques]):0;
+    item.legacyEmbarques+=(loc.embarques&&!legacyShipLinked)?numberValue(r[loc.embarques]):0;
   });
   // Incluye productos creados desde los formularios aunque todavía no existan en la hoja importada.
   (book.productosManuales||[]).forEach(p=>ensure(p.name,p.code||''));
@@ -1665,6 +1677,8 @@ function renderInventory() {
   renderDashboard();
   if(activeTab==="trazabilidad") renderTraceability();
   if(activeTab==="reposiciones") renderReplenishmentConfig();
+  // Las ventas tomadas de consignaciones actualizan la tabla (columna «Vendidos») y la matriz por cliente.
+  if(activeTab==="consignacion") renderEntryTable("cons");
 }
 function traceDataForProduct(row){
  const matches=l=>(norm(l.code||'')===norm(row.code||'') || (!row.code&&norm(l.product)===norm(row.name)));
@@ -2650,6 +2664,120 @@ function consDisplayColumns(sh,cols){
  const rest=info.filter(x=>!x.has).sort((a,b)=>a.i-b.i);
  return [...fixed,...real.map(x=>x.c),...genericWithData.map(x=>x.c),...rest.map(x=>x.c)];
 }
+/* ================================================================
+   EMBARQUES ⇄ REGISTRO DE STOCK (Registros)
+   Se importan automáticamente como embarques:
+   - Cada columna de una hoja cuyo nombre contenga «Embarque» (filas opcionales:
+     «Fecha», «Factura», «Container», «Referencia»).
+   - En la hoja de inventario, cada columna cuyo encabezado contenga «Embarque»,
+     «Container», «Contenedor» o «En tránsito».
+   Los embarques importados quedan editables en la página. Si se editan, la edición se
+   conserva hasta que la columna cambie en la hoja. Si la columna se vacía o se borra, el
+   embarque se elimina, salvo que ya esté recibido, haya abastecido ventas, tenga facturas
+   cargadas o haya sido editado: en ese caso queda registrado y se desvincula de la hoja.
+   ================================================================ */
+const SHIP_SHEET_COL_RE=/(embarque|container|contenedor|en transito|transito)/;
+function shipSheetKey(sheetName,col){return String(sheetName||'')+'::'+String(col||'');}
+function shipHash(s){let h=5381;s=String(s);for(let i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(i))>>>0;return h.toString(36);}
+function shipMetaKind(t){
+ if(!t)return '';
+ if(/^fecha/.test(t)||t==='eta'||/^(ingreso|arribo|llegada)/.test(t))return 'date';
+ if(t.includes('factura')||t==='invoice')return 'invoice';
+ if(t.includes('container')||t.includes('contenedor'))return 'container';
+ if(/^(referencia|identificacion|descripcion del embarque)/.test(t))return 'label';
+ return '';
+}
+function shipSheetSources(){
+ const sheets=book.sheets||[],out=[],consIdx=consSheetIndex();
+ const invIdx=Math.min(Math.max(0,Number(book.productConfig?.sheet)||0),Math.max(0,sheets.length-1));
+ sheets.forEach((sh,idx)=>{
+  if(idx===consIdx||!sh)return;
+  const rows=Array.isArray(sh.rows)?sh.rows:[],cols=columns(rows);if(!cols.length)return;
+  const dedicated=norm(sh.name).includes('embarque');
+  if(!dedicated&&idx!==invIdx)return;
+  const pc=book.productConfig||{};
+  const nameCol=(idx===invIdx&&pc.name&&cols.includes(pc.name))?pc.name:consFindCol(cols,['producto','productos','descripcion','articulo','nombre','clientes']);
+  const codeCol=(idx===invIdx&&pc.code&&cols.includes(pc.code))?pc.code:consFindCol(cols,['codigos','codigo','cod','sku']);
+  if(!nameCol&&!codeCol)return;
+  const fixed=[nameCol,codeCol].filter(Boolean);
+  const shipCols=cols.filter(c=>{
+   if(fixed.includes(c))return false;const n=norm(c);
+   if(dedicated)return !/^(resumen|total|observacion|unidad|precio|costo)/.test(n)&&!(typeof isMoneyColumn==='function'&&isMoneyColumn(c));
+   return SHIP_SHEET_COL_RE.test(n);
+  });
+  out.push({sheetName:sh.name,rows,nameCol,codeCol,shipCols});
+ });
+ return out;
+}
+function shipSheetColumnData(src,col){
+ const lines=[];let date='',invoiceNumber='',container='',label='';
+ src.rows.forEach(r=>{
+  const code=src.codeCol?String(r[src.codeCol]??'').trim():'';
+  const tag=src.nameCol?norm(r[src.nameCol]):'';
+  const kind=!code?shipMetaKind(tag):'';
+  if(kind){const v=String(r[col]??'').trim();if(!v)return;
+   if(kind==='date')date=consToISO(v)||date;else if(kind==='invoice')invoiceNumber=v;else if(kind==='container')container=v;else label=v;return;}
+  const qty=numberValue(r[col]);if(!(qty>0))return;
+  const product=src.nameCol?String(r[src.nameCol]??'').trim():'';
+  if(!product&&!code)return;
+  const ex=lines.find(l=>(code&&norm(l.code)===norm(code))||(!code&&norm(l.product)===norm(product)));
+  if(ex)ex.quantity+=qty;else lines.push({productKey:'',product:product||code,code,quantity:qty});
+ });
+ if(!date){const f=shipmentDateFrom(col)[0];if(f)date=f.v;}
+ return {date,invoiceNumber,container,label,lines};
+}
+function shipSnapshot(d){return [d.date,d.invoiceNumber,d.container,d.label,consLinesKey(d.lines)].join('#');}
+let shipSyncing=false;
+var shipSyncPendingSave=false;
+function syncShipmentsFromSheets(){
+ if(shipSyncing||!book||!Array.isArray(book.sheets))return false;
+ shipSyncing=true;let changed=false;
+ try{
+  if(!Array.isArray(book.embarques))book.embarques=[];
+  const ignored=new Set(Array.isArray(book.embarquesIgnorados)?book.embarquesIgnorados:[]);
+  const usedBySales=id=>(book.ventasConsumos||[]).some(m=>m.sourceType==='shipment'&&String(m.sourceId||'')===String(id));
+  const seen=new Set();
+  for(const src of shipSheetSources()){
+   for(const col of src.shipCols){
+    const key=shipSheetKey(src.sheetName,col),d=shipSheetColumnData(src,col);
+    if(!d.lines.length||ignored.has(key))continue;
+    seen.add(key);
+    const snap=shipSnapshot(d);
+    let rec=book.embarques.find(r=>r.sheetKey===key);
+    // Columna que había quedado desvinculada (por ejemplo, vaciada y vuelta a cargar) y no fue recibida: se vuelve a vincular.
+    if(!rec){rec=book.embarques.find(r=>r.sheetKeyDetached===key&&!(r.receivedAt||r.received));if(rec){rec.sheetKey=key;delete rec.sheetKeyDetached;rec.sheetSnapshot='';changed=true;}}
+    if(!rec){
+     let id='shs_'+shipHash(key);if(book.embarques.some(r=>String(r.id)===id))id='shs_'+shipHash(key+'|'+snap);
+     if(book.embarques.some(r=>String(r.id)===id))continue;
+     book.embarqueCounter=(Number(book.embarqueCounter)||0)+1;
+     book.embarques.push({id,number:'EMB-'+String(book.embarqueCounter).padStart(5,'0'),operation:'Embarque',client:'',date:d.date,estimatedDate:d.date,label:d.label||String(col),invoiceNumber:d.invoiceNumber,container:d.container,instances:shipmentDefaultInstances(),createdAt:new Date().toISOString(),createdBy:'Registro de stock',lines:d.lines,origin:'sheet',sheetKey:key,sheetName:src.sheetName,sheetColumn:col,sheetSnapshot:snap});
+     changed=true;continue;
+    }
+    if(rec.sheetSnapshot===snap||rec.receivedAt||rec.received)continue;
+    // La columna cambió en la hoja: se actualiza el embarque (sin borrar datos cargados en la página que la hoja no trae).
+    rec.lines=d.lines;
+    if(d.date){rec.date=d.date;rec.estimatedDate=d.date;}
+    if(d.invoiceNumber)rec.invoiceNumber=d.invoiceNumber;
+    if(d.container)rec.container=d.container;
+    if(d.label)rec.label=d.label;
+    rec.sheetSnapshot=snap;rec.sheetUpdatedAt=new Date().toISOString();
+    delete entryDrafts['se'+rec.id];
+    changed=true;
+   }
+  }
+  // Columnas que ya no existen o quedaron vacías.
+  book.embarques=book.embarques.filter(rec=>{
+   if(!rec.sheetKey||seen.has(rec.sheetKey))return true;
+   const keep=!!(rec.receivedAt||rec.received)||usedBySales(rec.id)||(rec.instances||[]).some(i=>i.doc)||!!rec.updatedAt;
+   changed=true;
+   if(keep){rec.sheetKeyDetached=rec.sheetKey;delete rec.sheetKey;return true;}
+   delete entryDrafts['se'+rec.id];return false;
+  });
+ }catch(e){console.warn('No se pudieron sincronizar los embarques del registro de stock:',e);}
+ finally{shipSyncing=false;}
+ return changed;
+}
+function syncSheetsToPage(){const a=syncConsignments();const b=syncShipmentsFromSheets();return a||b;}
 const ENTRY_CONFIG={
  cons:{linesId:'consLines',statusId:'consStatus',productsKey:'consignaciones',counterKey:'consignacionCounter',prefix:'CON',operation:'Productos en consignación',tableId:'consTable',clientId:'consClient',dateId:'consDate',title:'consignación'},
  pedido:{linesId:'pedidoLines',statusId:'pedidoStatus',productsKey:'pedidosFabricacion',counterKey:'pedidoCounter',prefix:'FAB',operation:'Pedido de fabricación',tableId:'pedidoTable',clientId:'pedidoClient',dateId:'pedidoDate',title:'pedido de fabricación'},
@@ -2791,16 +2919,35 @@ function renderConsignmentMatrix(){
     columns.map(c=>`<td class="cons-matrix-qty">${numberValue(item.quantities[c.key]||0)||'—'}</td>`).join('')+'</tr>').join('');
   box.innerHTML='<table class="consignment-matrix-table"><thead>'+header+'</thead><tbody>'+body+'</tbody></table>';
 }
+/* Columna «Vendidos» de Consignaciones registradas: ventas tomadas de esta consignación (qué, cuántos y cuándo)
+   y lo que todavía queda en consignación. La columna «Productos y cantidades» conserva la consignación inicial. */
+function consSoldCell(rec){
+ const moves=(book.ventasConsumos||[]).filter(m=>m.sourceType==='consignacion'&&String(m.sourceId||'')===String(rec.id||''));
+ const keyOf=(code,product)=>String(code||'').trim()?'c:'+norm(code):'n:'+norm(product);
+ const sale=id=>(salesRecords||[]).find(s=>String(s.id)===String(id));
+ const saleDate=m=>{const s=sale(m.saleId);return s?.invoiceDate||String(m.createdAt||s?.createdAt||'').slice(0,10);};
+ const sold=moves.map(m=>({m,date:saleDate(m)})).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+ const soldByKey=new Map();moves.forEach(m=>{const k=keyOf(m.code,m.product);soldByKey.set(k,(soldByKey.get(k)||0)+numberValue(m.quantity));});
+ const initial=new Map();
+ (rec.lines||[]).forEach(l=>{const k=keyOf(l.code,l.product);const it=initial.get(k)||{product:l.product,code:l.code,qty:0};it.qty+=numberValue(l.quantity);initial.set(k,it);});
+ const left=[...initial.entries()].map(([k,it])=>({...it,left:Math.max(0,it.qty-(soldByKey.get(k)||0))}));
+ const totalLeft=left.reduce((a,x)=>a+x.left,0);
+ if(!sold.length)return '<span class="muted">Sin ventas registradas.<br>Quedan en consignación todas las unidades.</span>';
+ const soldHtml='<span class="cons-sold-title">Vendidos</span><ul class="cons-sold-list">'+sold.map(({m,date})=>{const s=sale(m.saleId);
+   return `<li>${esc(m.product||'Producto')}${m.code?' ('+esc(m.code)+')':''} — <strong>${esc(numberValue(m.quantity))}</strong><br><span class="cons-sold-date">Fecha: ${esc(date?formatDateOnly(date):'—')}${s?.number?' · Venta '+esc(s.number):''}${s?.client?' · '+esc(s.client):''}</span></li>`;}).join('')+'</ul>';
+ const leftHtml='<div class="cons-left"><strong>Quedan en consignación</strong>'+(totalLeft?left.map(x=>`<div class="${x.left?'':'cons-left-zero'}">${esc(x.product)}${x.code?' ('+esc(x.code)+')':''} — ${x.left}${x.left?'':' (vendido todo)'}</div>`).join(''):'<div>No quedan productos en consignación: se vendió todo.</div>')+'</div>';
+ return soldHtml+leftHtml;
+}
 function renderEntryTable(type){
  if(type==='shipment'){renderShipmentRegistry();return;}
  const cfg=ENTRY_CONFIG[type],box=$(cfg.tableId);if(!box)return;const records=[...(book[cfg.productsKey]||[])].sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
  if(!records.length){box.innerHTML='<p class="muted" style="padding:12px">Todavía no hay registros.</p>';return;}
- let html='<table class="request-lines"><thead><tr><th>N.º</th><th>Operación</th><th>Cliente / referencia</th><th>Fecha solicitada / estimada</th><th>Fecha y hora de registro</th><th>Productos y cantidades</th><th>'+(type==='shipment'?'Recibido':'Acción')+'</th></tr></thead><tbody>';
+ let html='<table class="request-lines"><thead><tr><th>N.º</th><th>Operación</th><th>Cliente / referencia</th><th>Fecha solicitada / estimada</th><th>Fecha y hora de registro</th><th>Productos y cantidades</th>'+(type==='cons'?'<th>Vendidos</th>':'')+'<th>'+(type==='shipment'?'Recibido':'Acción')+'</th></tr></thead><tbody>';
  records.forEach(r=>{const detail=(r.lines||[]).map(l=>`${esc(l.product)}${l.code?' ('+esc(l.code)+')':''} — ${esc(l.quantity)}`).join('<br>');
    let action='';
    if(type==='shipment') action=`<label style="display:flex;align-items:center;gap:7px;white-space:nowrap"><input type="checkbox" data-shipment-received="${esc(r.id)}" ${r.receivedAt||r.received?'checked':''}> ${r.receivedAt||r.received?'Recibido':'Marcar recibido'}</label>${r.receivedAt?`<small class="muted">${esc(formatRequestDate(r.receivedAt))}</small>`:''}`;
    else action=`<button class="danger" data-entry-delete="${type}:${esc(r.id)}">Eliminar</button>`;
-   html+=`<tr ${type==='shipment'&&(r.receivedAt||r.received)?'style="opacity:.72"':''}><td>${esc(r.number)}</td><td>${esc(r.operation)}</td><td>${esc(r.client||r.label||'—')}</td><td>${esc(formatDateOnly(r.date||r.estimatedDate))}</td><td>${esc(formatRequestDate(r.createdAt))}</td><td>${detail}</td><td>${action}</td></tr>`;
+   html+=`<tr ${type==='shipment'&&(r.receivedAt||r.received)?'style="opacity:.72"':''}><td>${esc(r.number)}</td><td>${esc(r.operation)}</td><td>${esc(r.client||r.label||'—')}</td><td>${esc(formatDateOnly(r.date||r.estimatedDate))}</td><td>${esc(formatRequestDate(r.createdAt))}</td><td>${detail}</td>${type==='cons'?`<td>${consSoldCell(r)}</td>`:''}<td>${action}</td></tr>`;
  });
  box.innerHTML=html+'</tbody></table>';
  if(type==='cons')renderConsignmentMatrix();
@@ -2887,6 +3034,7 @@ function renderShipmentRegistry(){
   return `<article class="ship-record ${received?'is-received':''}" data-ship="${rid}">
    <div class="ship-head"><div><h3>${esc(rec.number||'Embarque')}${rec.label?' · '+esc(rec.label):''}<span class="ship-badge">${received?'Recibido':'Pendiente'}</span></h3>
     <div class="ship-meta">N.º de factura: <strong>${esc(rec.invoiceNumber||'—')}</strong> · Container: <strong>${esc(rec.container||'—')}</strong> · Fecha estimada de ingreso: <strong>${esc(formatDateOnly(rec.date||rec.estimatedDate))}</strong> · Facturas cargadas: <strong>${loaded}/${instances.length}</strong></div>
+    ${rec.origin==='sheet'?`<div><small class="ship-origin">${rec.sheetKey?`Importado automáticamente del registro de stock · hoja «${esc(rec.sheetName||'')}» · columna «${esc(rec.sheetColumn||'')}»`:`Importado del registro de stock (columna «${esc(rec.sheetColumn||'')}», ya desvinculada de la hoja)`}${rec.sheetUpdatedAt?' · Actualizado desde la hoja: '+esc(formatRequestDate(rec.sheetUpdatedAt)):''}</small></div>`:''}
     <div><small class="muted">Registrado: ${esc(formatRequestDate(rec.createdAt))}${rec.createdBy?' · '+esc(rec.createdBy):''}${rec.updatedAt?' · Última edición: '+esc(formatRequestDate(rec.updatedAt))+(rec.updatedBy?' · '+esc(rec.updatedBy):''):''}</small></div>
     <div style="margin-top:6px">${products||'<span class="muted">Sin productos</span>'}</div></div>
     <div>${receivedBox}</div></div>
@@ -2968,14 +3116,17 @@ async function shipmentCancel(id,btn){
   '• Se elimina su registro completo y deja de figurar en el stock'+(received?' (ya estaba recibido: sus cantidades se restan de Trenque Lauquen).':'.'),
   docs.length?`• Se borran ${docs.length} factura(s) PDF cargadas en sus instancias.`:'• No tiene facturas cargadas.',
   moves.length?`• Se quitan las asignaciones de stock que tomaron unidades de este embarque en: ${saleNames.join(', ')}. Esas ventas siguen registradas, pero esas unidades ya no se descuentan de ningún origen.`:'• Ninguna venta tomó unidades de este embarque.',
+  ...(rec.sheetKey?[`• Viene del registro de stock (hoja «${rec.sheetName}», columna «${rec.sheetColumn}»): no se volverá a importar aunque la columna siga cargada.`]:[]),
   '','Esta acción no se puede deshacer.'];
  if(!confirm(lines.join('\n')))return;
  if(btn){btn.disabled=true;btn.textContent='Cancelando…';}
- const prevShipments=[...(book.embarques||[])],prevMoves=[...(book.ventasConsumos||[])];
+ const prevShipments=[...(book.embarques||[])],prevMoves=[...(book.ventasConsumos||[])],prevIgnored=Array.isArray(book.embarquesIgnorados)?[...book.embarquesIgnorados]:[];
+ const sheetKey=rec.sheetKey||rec.sheetKeyDetached;
+ if(sheetKey)book.embarquesIgnorados=[...new Set([...prevIgnored,sheetKey])];
  book.embarques=prevShipments.filter(r=>String(r.id)!==String(id));
  book.ventasConsumos=prevMoves.filter(m=>!(m.sourceType==='shipment'&&String(m.sourceId||'')===String(id)));
  try{await saveBook();}
- catch(e){book.embarques=prevShipments;book.ventasConsumos=prevMoves;shipmentSetMsg(id,'No se pudo cancelar el embarque: '+e.message,true);renderShipmentRegistry();return;}
+ catch(e){book.embarques=prevShipments;book.ventasConsumos=prevMoves;book.embarquesIgnorados=prevIgnored;shipmentSetMsg(id,'No se pudo cancelar el embarque: '+e.message,true);renderShipmentRegistry();return;}
  if(docs.length){const {error}=await sb.storage.from(SHIP_BUCKET).remove(docs);if(error)console.warn('Embarque cancelado, pero no se pudieron borrar algunos PDF:',error.message);}
  delete entryDrafts['se'+id];delete shipmentMsgs[id];shipmentOpen.delete(String(id));
  renderShipmentRegistry();renderShipmentCards();renderInventory();
@@ -2987,7 +3138,9 @@ async function shipmentSaveEdits(id,root,btn){
  if(!currentUser){shipmentSetMsg(id,'Tenés que iniciar sesión para editar embarques.',true);return;}
  const field=k=>root.querySelector(`[data-ship-field="${k}"]`)?.value.trim()||'';
  const invoiceNumber=field('invoiceNumber'),container=field('container'),date=field('date'),label=field('label');
- if(!invoiceNumber||!container||!date){shipmentSetMsg(id,'Completá N.º de factura, container y fecha estimada de ingreso.',true);return;}
+ // Los embarques importados del registro de stock pueden no traer factura ni container: se completan cuando se conozcan.
+ if(rec.origin==='sheet'){if(!date){shipmentSetMsg(id,'Completá la fecha estimada de ingreso.',true);return;}}
+ else if(!invoiceNumber||!container||!date){shipmentSetMsg(id,'Completá N.º de factura, container y fecha estimada de ingreso.',true);return;}
  const draft=entryDrafts['se'+id]||[];
  const lines=draft.map(l=>({product:l.product,code:l.code||'',quantity:Math.max(1,Math.floor(Number(l.quantity)||1)),productKey:l.productKey})).filter(l=>l.product);
  if(!lines.length||lines.length!==draft.length){shipmentSetMsg(id,'Elegí un producto válido en cada fila de productos.',true);return;}
