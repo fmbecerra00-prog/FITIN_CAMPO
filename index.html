@@ -914,7 +914,10 @@ async function loadBook() {
   // El diseño vive en una tabla separada para que app_state no exponga el editor ni sus ajustes.
   const {data:designRow,error:designError}=await sb.from("design_config").select("data").eq("id",1).maybeSingle();
   if(designError) throw new Error("No se pudo cargar el tema visual (revisá la tabla design_config): "+designError.message);
-  const savedDesign=designRow?.data || {};
+  // Si design_config está vacía, se recupera el diseño viejo guardado dentro de app_state (antes vivía ahí).
+  // La próxima vez que la administradora guarde, queda copiado en design_config.
+  const designFromTable=(designRow?.data && typeof designRow.data==="object" && Object.keys(designRow.data).length)?designRow.data:null;
+  const savedDesign=designFromTable || ((saved.design && typeof saved.design==="object")?saved.design:{});
   book.design={...DEFAULT_DESIGN,...savedDesign,logos:Array.isArray(savedDesign.logos)?savedDesign.logos:[],columnWidths:{...(savedDesign.columnWidths||{})}};
   book.active=Math.min(Math.max(0,Number(book.active)||0),book.sheets.length-1);
   salesRecords=[]; salesStorageReady=false; salesStorageError="";
@@ -925,6 +928,9 @@ async function loadBook() {
   }
   // Los embarques de la hoja se registran con un id estable, así las ventas pueden tomarlos aunque todavía no se hayan guardado.
   try{if(syncShipmentsFromSheets())shipSyncPendingSave=true;}catch(e){console.warn(e);}
+  // Punto de partida para combinar cambios si otra persona guarda mientras editás.
+  baseState=deepClone(saved);
+  lastSavedDesignKey=stableKey(book.design||{});
 }
 
 function availabilityDateLabel() {
@@ -987,45 +993,164 @@ function readLocalCopy() {
 }
 function clearLocalCopy() { try { localStorage.removeItem(LOCAL_COPY_KEY); } catch (e) {} }
 
+/* FUSIÓN AUTOMÁTICA DE CAMBIOS
+   Si otra persona guardó mientras vos editabas, no se rechaza tu guardado:
+   se trae lo último de Supabase y se combinan los cambios de ambos (registro por registro, celda por celda).
+   Solo si los dos modificaron exactamente el mismo dato, gana el último que guarda. */
+let baseState = null;          // copia de los datos tal como estaban la última vez que se cargaron o guardaron
+let lastSavedDesignKey = null; // para guardar el diseño solo cuando cambió
+const deepClone = v => v === undefined ? undefined : JSON.parse(JSON.stringify(v));
+function stableKey(v) {
+  if (v === undefined) return "u";
+  if (v === null || typeof v !== "object") return JSON.stringify(v);
+  if (Array.isArray(v)) return "[" + v.map(stableKey).join(",") + "]";
+  return "{" + Object.keys(v).sort().filter(k => v[k] !== undefined).map(k => JSON.stringify(k) + ":" + stableKey(v[k])).join(",") + "}";
+}
+const sameVal = (a, b) => stableKey(a) === stableKey(b);
+const isPlainObj = v => v !== null && typeof v === "object" && !Array.isArray(v);
+function arrayKeyField(...arrs) {
+  const items = arrs.filter(Array.isArray).flat();
+  if (!items.length) return null;
+  for (const f of ["id", "name"]) {
+    if (items.every(x => isPlainObj(x) && x[f] !== undefined && x[f] !== null && x[f] !== "")) {
+      const ok = arrs.filter(Array.isArray).every(a => new Set(a.map(x => String(x[f]))).size === a.length);
+      if (ok) return f;
+    }
+  }
+  return null;
+}
+function merge3(base, local, remote, key) {
+  if (sameVal(local, remote)) return local;
+  if (sameVal(base, local)) return remote;
+  if (sameVal(base, remote)) return local;
+  // Los dos cambiaron el mismo dato.
+  if (local === undefined) return remote;
+  if (remote === undefined) return local;
+  if (typeof local === "number" && typeof remote === "number" && /counter$/i.test(key || "")) return Math.max(local, remote);
+  if (Array.isArray(local) && Array.isArray(remote)) {
+    const b = Array.isArray(base) ? base : [];
+    const f = arrayKeyField(b, local, remote);
+    if (f) {
+      const mapB = new Map(b.map(x => [String(x[f]), x]));
+      const mapL = new Map(local.map(x => [String(x[f]), x]));
+      const mapR = new Map(remote.map(x => [String(x[f]), x]));
+      const order = [...remote.map(x => String(x[f])), ...local.map(x => String(x[f])).filter(k => !mapR.has(k))];
+      const out = [];
+      for (const k of order) {
+        const m = merge3(mapB.get(k), mapL.get(k), mapR.get(k), k);
+        if (m !== undefined) out.push(m);
+      }
+      return out;
+    }
+    if (local.length === remote.length && b.length === local.length) {
+      return local.map((item, i) => merge3(b[i], item, remote[i], key));
+    }
+    // Filas agregadas o quitadas: se respetan las del otro y se aplican encima tus cambios.
+    if (local.length === remote.length) return local.map((item, i) => merge3(b[i], item, remote[i], key));
+    const longer = local.length >= remote.length ? local : remote;
+    return longer.map((item, i) => merge3(b[i], local[i], remote[i], key)).filter(x => x !== undefined);
+  }
+  if (isPlainObj(local) && isPlainObj(remote)) {
+    const b = isPlainObj(base) ? base : {};
+    const out = {};
+    for (const k of new Set([...Object.keys(remote), ...Object.keys(local)])) {
+      const m = merge3(b[k], local[k], remote[k], k);
+      if (m !== undefined) out[k] = m;
+    }
+    return out;
+  }
+  return local; // mismo valor simple cambiado por los dos: gana el último que guarda
+}
+// Si dos personas crearon a la vez un registro con el mismo número (ej. CON-00014), el tuyo pasa al siguiente libre.
+function fixDuplicateNumbers(merged, remote) {
+  const groups = [["consignaciones","consignacionCounter","CON"],["pedidosFabricacion","pedidoCounter","FAB"],["embarques","embarqueCounter","EMB"],["solicitudes","requestCounter","SOL"]];
+  for (const [listKey, counterKey, prefix] of groups) {
+    const list = merged[listKey];
+    if (!Array.isArray(list)) continue;
+    const remoteIds = new Set((Array.isArray(remote?.[listKey]) ? remote[listKey] : []).map(r => String(r?.id)));
+    const numOf = r => Number(String(r?.number || "").replace(/\D/g, "")) || 0;
+    let counter = Math.max(Number(merged[counterKey]) || 0, ...list.map(numOf));
+    const seen = new Set();
+    // Primero los registros que ya estaban en Supabase, así conservan su número.
+    const ordered = [...list].sort((a, b) => (remoteIds.has(String(b?.id)) ? 1 : 0) - (remoteIds.has(String(a?.id)) ? 1 : 0));
+    for (const r of ordered) {
+      if (!r || !r.number) continue;
+      if (seen.has(r.number) && !remoteIds.has(String(r.id))) {
+        counter += 1;
+        r.number = prefix + "-" + String(counter).padStart(5, "0");
+      }
+      seen.add(r.number);
+    }
+    merged[counterKey] = counter;
+  }
+  return merged;
+}
+function rememberSavedState(operationalBook) {
+  baseState = deepClone(operationalBook);
+}
+
 async function saveBookOnce() {
   syncSheetsToPage();
   if(!currentUser) throw new Error(PUBLIC_MODE?"Para guardar solicitudes desde el acceso público hay que habilitar una tabla/política pública segura en Supabase; no se permite sobrescribir el libro completo sin iniciar sesión.":"Tu sesión no está activa. Volvé a iniciar sesión.");
 
   // Nunca guardar el diseño dentro de app_state: así los usuarios operativos no pueden modificarlo.
-  const operationalBook = operationalSnapshot();
-  const now = new Date().toISOString();
+  let mergedOthers = false;
+  for (let round = 0; ; round++) {
+    const operationalBook = operationalSnapshot();
+    const now = new Date().toISOString();
 
-  if (versioningEnabled && appStateRowExists && bookVersion !== null) {
-    // Solo actualiza si nadie más guardó desde que cargaste los datos.
-    const {data, error} = await sb.from("app_state")
-      .update({data: operationalBook, updated_by: currentUser.id, updated_at: now})
-      .eq("id", 1).eq("version", bookVersion)
-      .select("version");
-    if (error) throw new Error("Error al guardar datos: " + error.message);
-    if (!data || !data.length) {
-      // 0 filas actualizadas: o alguien guardó antes (conflicto) o tu usuario no tiene permiso.
-      const {data: current, error: checkError} = await sb.from("app_state").select("version").eq("id", 1).maybeSingle();
+    if (versioningEnabled && appStateRowExists && bookVersion !== null) {
+      // Solo actualiza si nadie más guardó desde que cargaste los datos.
+      const {data, error} = await sb.from("app_state")
+        .update({data: operationalBook, updated_by: currentUser.id, updated_at: now})
+        .eq("id", 1).eq("version", bookVersion)
+        .select("version");
+      if (error) throw new Error("Error al guardar datos: " + error.message);
+      if (data && data.length) { bookVersion = data[0].version; rememberSavedState(operationalBook); break; }
+
+      // 0 filas actualizadas: o alguien guardó antes (se combinan los cambios) o tu usuario no tiene permiso.
+      const {data: current, error: checkError} = await sb.from("app_state").select("data,version").eq("id", 1).maybeSingle();
       if (checkError) throw new Error("Error al verificar el guardado: " + checkError.message);
-      if (current && current.version !== bookVersion) {
-        const err = new Error("Otra persona guardó cambios mientras editabas. Para no borrar su trabajo, tus cambios NO se subieron. Quedaron guardados en este navegador: abrí «Copias de seguridad», descargá tu copia y recargá la página para ver los datos actualizados.");
+      if (!current || current.version === bookVersion) {
+        throw new Error("Supabase no permitió guardar. Revisá que tu correo esté en la tabla usuarios_habilitados.");
+      }
+      if (round >= 6) {
+        const err = new Error("Varias personas están guardando al mismo tiempo y no se pudo combinar tu cambio. Tus cambios quedaron guardados en este navegador; volvé a intentar en unos segundos.");
         err.conflict = true;
         throw err;
       }
-      throw new Error("Supabase no permitió guardar. Revisá que tu correo esté en la tabla usuarios_habilitados.");
+      const merged = fixDuplicateNumbers(merge3(baseState || {}, operationalBook, current.data || {}), current.data || {});
+      const design = book.design;
+      book = {...merged, design};
+      baseState = deepClone(current.data || {});
+      bookVersion = current.version;
+      mergedOthers = true;
+      console.info("FITIN CAMPO: se combinaron tus cambios con los de otra persona.");
+      continue;
+    } else {
+      const payload = {id: 1, data: operationalBook, updated_by: currentUser.id, updated_at: now};
+      const {data, error} = await sb.from("app_state").upsert(payload, {onConflict: "id"}).select(versioningEnabled ? "version" : "id");
+      if (error) throw new Error("Error al guardar datos: " + error.message);
+      appStateRowExists = true;
+      if (versioningEnabled && data && data[0] && data[0].version !== undefined) bookVersion = data[0].version;
+      rememberSavedState(operationalBook);
+      break;
     }
-    bookVersion = data[0].version;
-  } else {
-    const payload = {id: 1, data: operationalBook, updated_by: currentUser.id, updated_at: now};
-    const {data, error} = await sb.from("app_state").upsert(payload, {onConflict: "id"}).select(versioningEnabled ? "version" : "id");
-    if (error) throw new Error("Error al guardar datos: " + error.message);
-    appStateRowExists = true;
-    if (versioningEnabled && data && data[0] && data[0].version !== undefined) bookVersion = data[0].version;
   }
+  if (mergedOthers) { try { renderAll(); } catch (e) { console.warn("No se pudo refrescar la vista después de combinar cambios:", e); } }
 
   // Solo la cuenta administradora puede escribir en design_config; RLS lo verifica en el servidor.
-  if (isAdminUser()) {
+  // Se guarda solo si el diseño cambió, y un error acá NO significa que se perdieron datos.
+  const designKey = stableKey(book.design || {});
+  if (isAdminUser() && designKey !== lastSavedDesignKey) {
+    const now = new Date().toISOString();
     const {error: designSaveError} = await sb.from("design_config").upsert({id: 1, data: book.design || {}, updated_by: currentUser.id, updated_at: now}, {onConflict: "id"});
-    if (designSaveError) throw new Error("Los datos operativos se guardaron, pero no se pudo guardar el diseño: " + designSaveError.message);
+    if (designSaveError) {
+      const err = new Error("Los datos se guardaron bien, pero no se pudo guardar el diseño: " + designSaveError.message);
+      err.designOnly = true;
+      throw err;
+    }
+    lastSavedDesignKey = designKey;
   }
 }
 
@@ -1034,6 +1159,11 @@ async function saveBookWithRetry() {
   for (let attempt = 0; ; attempt++) {
     try { return await saveBookOnce(); }
     catch (err) {
+      // Sesión vencida: se renueva sola y se reintenta una vez.
+      if (!err.sessionRetried && /jwt|token|session|sesión/i.test(String(err?.message || "")) && !/usuarios_habilitados/.test(String(err?.message||""))) {
+        const {error: refreshError} = await sb.auth.refreshSession();
+        if (!refreshError) { try { return await saveBookOnce(); } catch (e2) { e2.sessionRetried = true; throw e2; } }
+      }
       if (!isNetworkError(err) || attempt >= delays.length) throw err;
       console.warn(`Guardado falló por conexión, reintento ${attempt + 1}…`, err);
       await wait(delays[attempt]);
@@ -1047,6 +1177,7 @@ function saveBook() {
   const p = saveChain.then(run, run)
     .then(() => { lastSaveFailed = false; clearLocalCopy(); hideLocalCopyBanner(); })
     .catch(err => {
+      if (err?.designOnly) { lastSaveFailed = false; clearLocalCopy(); hideLocalCopyBanner(); throw err; }
       lastSaveFailed = true;
       if (keepLocalCopy(err?.message)) showLocalCopyBanner();
       throw err;
