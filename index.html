@@ -1227,6 +1227,7 @@ function renderSheetSelect() {
 function renderAll() {
   // Si la hoja trae embarques o consignaciones nuevas, se registran y se guardan enseguida.
   const importedFromSheets=syncSheetsToPage()||shipSyncPendingSave; shipSyncPendingSave=false;
+  if(importedFromSheets && activeTab==="embarques"){renderEntryTable("shipment");renderShipmentCards();}
   if(importedFromSheets && currentUser && !PUBLIC_MODE) saveBook().catch(e=>console.warn("No se pudieron guardar los registros importados de las hojas:",e));
   renderSheetSelect();
   renderAvailabilityDates();
@@ -2716,15 +2717,26 @@ function shipSheetColumnData(src,col){
   const tag=src.nameCol?norm(r[src.nameCol]):'';
   const kind=!code?shipMetaKind(tag):'';
   if(kind){const v=String(r[col]??'').trim();if(!v)return;
-   if(kind==='date')date=consToISO(v)||date;else if(kind==='invoice')invoiceNumber=v;else if(kind==='container')container=v;else label=v;return;}
+   if(kind==='date')date=consToISO(v)||shipDayMonthToISO(v)||date;else if(kind==='invoice')invoiceNumber=v;else if(kind==='container')container=v;else label=v;return;}
   const qty=numberValue(r[col]);if(!(qty>0))return;
   const product=src.nameCol?String(r[src.nameCol]??'').trim():'';
   if(!product&&!code)return;
   const ex=lines.find(l=>(code&&norm(l.code)===norm(code))||(!code&&norm(l.product)===norm(product)));
   if(ex)ex.quantity+=qty;else lines.push({productKey:'',product:product||code,code,quantity:qty});
  });
- if(!date){const f=shipmentDateFrom(col)[0];if(f)date=f.v;}
+ if(!date){const f=shipmentDateFrom(col)[0];date=f?f.v:shipDayMonthToISO(col);}
  return {date,invoiceNumber,container,label,lines};
+}
+/* Fecha «día/mes» sin año (ej. «Embarque 01/12»): se toma el año que deja la fecha más cerca de hoy. */
+function shipDayMonthToISO(str){
+ const m=String(str||'').match(/(?:^|[^\d])(\d{1,2})\s*[\/.-]\s*(\d{1,2})(?![\/.-]?\d)/);if(!m)return '';
+ const d=Number(m[1]),mo=Number(m[2]);if(!(d>=1&&d<=31&&mo>=1&&mo<=12))return '';
+ const today=new Date();today.setHours(0,0,0,0);let best='',bestDiff=Infinity;
+ for(const y of [today.getFullYear()-1,today.getFullYear(),today.getFullYear()+1]){
+  const dt=new Date(y,mo-1,d);if(dt.getMonth()!==mo-1)continue;
+  const diff=Math.abs(dt-today);if(diff<bestDiff){bestDiff=diff;best=`${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;}
+ }
+ return best;
 }
 function shipSnapshot(d){return [d.date,d.invoiceNumber,d.container,d.label,consLinesKey(d.lines)].join('#');}
 let shipSyncing=false;
@@ -3036,6 +3048,7 @@ function renderShipmentRegistry(){
     <div class="ship-meta">N.º de factura: <strong>${esc(rec.invoiceNumber||'—')}</strong> · Container: <strong>${esc(rec.container||'—')}</strong> · Fecha estimada de ingreso: <strong>${esc(formatDateOnly(rec.date||rec.estimatedDate))}</strong> · Facturas cargadas: <strong>${loaded}/${instances.length}</strong></div>
     ${rec.origin==='sheet'?`<div><small class="ship-origin">${rec.sheetKey?`Importado automáticamente del registro de stock · hoja «${esc(rec.sheetName||'')}» · columna «${esc(rec.sheetColumn||'')}»`:`Importado del registro de stock (columna «${esc(rec.sheetColumn||'')}», ya desvinculada de la hoja)`}${rec.sheetUpdatedAt?' · Actualizado desde la hoja: '+esc(formatRequestDate(rec.sheetUpdatedAt)):''}</small></div>`:''}
     <div><small class="muted">Registrado: ${esc(formatRequestDate(rec.createdAt))}${rec.createdBy?' · '+esc(rec.createdBy):''}${rec.updatedAt?' · Última edición: '+esc(formatRequestDate(rec.updatedAt))+(rec.updatedBy?' · '+esc(rec.updatedBy):''):''}</small></div>
+    ${!(rec.date||rec.estimatedDate)?'<div><small class="status error">Sin fecha estimada de ingreso: no figura en el calendario ni en «Próximos embarques». Cargala en «Ver y editar registro».</small></div>':''}
     <div style="margin-top:6px">${products||'<span class="muted">Sin productos</span>'}</div></div>
     <div>${receivedBox}</div></div>
    <details data-ship-details="${rid}" ${shipmentOpen.has(id)?'open':''}><summary>Ver y editar registro e instancias de facturación</summary>
