@@ -980,6 +980,7 @@ function readLocalCopy() {
 function clearLocalCopy() { try { localStorage.removeItem(LOCAL_COPY_KEY); } catch (e) {} }
 
 async function saveBookOnce() {
+  syncConsignments();
   if(!currentUser) throw new Error(PUBLIC_MODE?"Para guardar solicitudes desde el acceso público hay que habilitar una tabla/política pública segura en Supabase; no se permite sobrescribir el libro completo sin iniciar sesión.":"Tu sesión no está activa. Volvé a iniciar sesión.");
 
   // Nunca guardar el diseño dentro de app_state: así los usuarios operativos no pueden modificarlo.
@@ -1189,13 +1190,14 @@ function showTab(id) {
 
 let recordsAutosaveTimer=null;
 function refreshDerivedViewsAfterRecordEdit(){
+  syncConsignments();
   stampAvailabilityUpdate();
   try{setupProductControls();}catch(e){console.warn("No se pudieron actualizar los selectores de productos",e);}
   renderInventory();
   if(activeTab==="records")renderRecords();
   if(activeTab==="trazabilidad")renderTraceability();
   if(activeTab==="ventas"){renderSalesLines();renderSalesAllocations();renderSalesTable();}
-  if(activeTab==="consignacion")renderEntryTable("cons");
+  if(activeTab==="consignacion"){renderEntryTable("cons");if(typeof renderConsignmentMatrix==="function")renderConsignmentMatrix();}
   if(activeTab==="pedidos")renderEntryTable("pedido");
   if(activeTab==="embarques"){renderEntryTable("shipment");renderShipmentCards();}
 }
@@ -1216,6 +1218,7 @@ function renderSheetSelect() {
   if(global) { global.innerHTML=options; global.value=String(book.active); }
 }
 function renderAll() {
+  syncConsignments();
   renderSheetSelect();
   renderAvailabilityDates();
   renderRecords();
@@ -1240,7 +1243,7 @@ $("globalSheetSelect").onchange=()=>{
 };
 function renderRecords() {
   renderAvailabilityDates();
-  const s=sheet(),cols=columns(s.rows),q=$("searchInput").value.trim().toLowerCase();
+  const s=sheet(),cols=consDisplayColumns(s,columns(s.rows)),q=$("searchInput").value.trim().toLowerCase();
   const rows=s.rows.map((r,i)=>({r,i})).filter(x=>!q||Object.values(x.r).some(v=>String(v??"").toLowerCase().includes(q)));
 
   if(!cols.length) {
@@ -1565,7 +1568,8 @@ function inventoryRows() {
     return item;
   };
   // Cada registro de consignación mueve stock desde Trenque Lauquen hacia Consignación.
-  (book.consignaciones||[]).forEach(rec=>(rec.lines||[]).forEach(line=>{
+  // Las consignaciones que vienen de la hoja "Mercadería en consignación" ya están descontadas en el Tablero General.
+  (book.consignaciones||[]).filter(rec=>rec.origin!=='sheet').forEach(rec=>(rec.lines||[]).forEach(line=>{
     const item=findItem(line); if(!item)return; const qty=numberValue(line.quantity);
     item.trenque-=qty; item.consignacion+=qty;
   }));
@@ -2494,6 +2498,158 @@ $("cancelEditRequestBtn").onclick=resetRequestEditor;
 $("requestSearch").oninput=renderRequestsTable;
 
 /* CONSIGNACIONES, PEDIDOS Y EMBARQUES */
+
+/* ================================================================
+   CONSIGNACIONES ⇄ HOJA "Mercadería en consignación"
+   - Cada columna de la hoja con nombre de cliente (fecha en la fila "Fecha") es una consignación en la página.
+   - Cada consignación registrada en la página agrega su columna en la hoja.
+   - Las consignaciones que vienen de la hoja (origin:'sheet') NO vuelven a restar de Trenque Lauquen,
+     porque el Tablero General ya las tiene descontadas.
+   ================================================================ */
+const CONS_GENERIC_RE=/^cliente\s*\d+$/i;
+function consSheetIndex(){return (book.sheets||[]).findIndex(sh=>norm(sh?.name).includes('consignacion'));}
+function consFindCol(cols,names){
+ for(const n of names){const c=cols.find(x=>norm(x)===n);if(c)return c;}
+ for(const n of names){const c=cols.find(x=>norm(x).includes(n));if(c)return c;}
+ return '';
+}
+function consToISO(v){
+ if(v===null||v===undefined||v==='')return '';
+ const t=String(v).trim();
+ if(/^\d{5}(\.\d+)?$/.test(t)){const d=new Date(Date.UTC(1899,11,30)+Math.floor(Number(t))*86400000);return d.toISOString().slice(0,10);}
+ const f=shipmentDateFrom(t)[0];return f?f.v:'';
+}
+function consFmtDate(iso){const m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?`${m[3]}/${m[2]}/${m[1]}`:String(iso||'');}
+function consSheetLayout(sh){
+ const rows=sh.rows||[];const cols=columns(rows);
+ const nameCol=consFindCol(cols,['clientes','producto','productos','descripcion','articulo','nombre']);
+ const codeCol=consFindCol(cols,['codigos','codigo','cod','sku']);
+ const sumCol=consFindCol(cols,['resumen','total']);
+ const fixed=[sumCol,nameCol,codeCol].filter(Boolean);
+ const dateRowIdx=rows.findIndex(r=>fixed.some(c=>norm(r?.[c])==='fecha'));
+ const clientCols=cols.filter(c=>!fixed.includes(c));
+ return {rows,cols,nameCol,codeCol,sumCol,dateRowIdx,dateRow:dateRowIdx>=0?rows[dateRowIdx]:null,clientCols};
+}
+function consColumnData(L,col){
+ const lines=[];
+ L.rows.forEach((r,i)=>{
+  if(i===L.dateRowIdx)return;
+  const qty=numberValue(r[col]);if(!(qty>0))return;
+  const product=String(r[L.nameCol]??'').trim(),code=L.codeCol?String(r[L.codeCol]??'').trim():'';
+  if(!product&&!code)return;
+  const ex=lines.find(l=>(code&&norm(l.code)===norm(code))||(!code&&norm(l.product)===norm(product)));
+  if(ex)ex.quantity+=qty;else lines.push({productKey:'',product:product||code,code,quantity:qty});
+ });
+ const date=L.dateRow?consToISO(L.dateRow[col]):'';
+ const client=String(col).replace(/\s*\(\d{1,2}\/\d{1,2}\/\d{2,4}\)\s*$/,'').trim();
+ return {client,date,lines};
+}
+function consEnsureSheet(){
+ let idx=consSheetIndex();
+ if(idx<0){book.sheets.push({name:'Mercadería en consignación',rows:[{'RESUMEN':'','CLIENTES':'Fecha','CÓDIGOS':''}]});idx=book.sheets.length-1;}
+ const sh=book.sheets[idx];if(!Array.isArray(sh.rows))sh.rows=[];
+ let L=consSheetLayout(sh);
+ if(!L.nameCol){const c='CLIENTES';sh.rows.forEach(r=>r[c]=r[c]??'');if(!sh.rows.length)sh.rows.push({[c]:''});L=consSheetLayout(sh);}
+ if(L.dateRowIdx<0){const row={};L.cols.forEach(c=>row[c]='');row[L.nameCol]='Fecha';sh.rows.unshift(row);L=consSheetLayout(sh);}
+ return {sh,L};
+}
+function consRecomputeSummary(sh){
+ const L=consSheetLayout(sh);if(!L.sumCol)return;
+ L.rows.forEach((r,i)=>{if(i===L.dateRowIdx)return;if(!String(r[L.nameCol]??'').trim()&&!String(r[L.codeCol]??'').trim())return;
+  r[L.sumCol]=String(L.clientCols.reduce((a,c)=>a+(numberValue(r[c])>0?numberValue(r[c]):0),0));});
+}
+function consWriteColumn(rec){
+ const {sh,L}=consEnsureSheet();
+ const cols=columns(sh.rows);
+ let header=String(rec.client||'Cliente').trim()||'Cliente';
+ if(cols.includes(header))header=`${header} (${consFmtDate(rec.date)})`;
+ let n=2;const base=header;while(cols.includes(header))header=`${base} ${n++}`;
+ sh.rows.forEach(r=>{r[header]='';});
+ L.dateRow[header]=consFmtDate(rec.date);
+ (rec.lines||[]).forEach(line=>{
+  const code=String(line.code||'').trim(),product=String(line.product||'').trim();
+  let row=sh.rows.find((r,i)=>i!==L.dateRowIdx&&code&&L.codeCol&&norm(r[L.codeCol])===norm(code))
+        ||sh.rows.find((r,i)=>i!==L.dateRowIdx&&product&&norm(r[L.nameCol])===norm(product));
+  if(!row){row={};columns(sh.rows).forEach(c=>row[c]='');row[L.nameCol]=product;if(L.codeCol)row[L.codeCol]=code;sh.rows.push(row);}
+  row[header]=String(numberValue(row[header])+numberValue(line.quantity));
+ });
+ rec.sheetColumn=header;
+ return sh;
+}
+function consRemoveColumn(rec){
+ const idx=consSheetIndex();if(idx<0||!rec?.sheetColumn)return;
+ const sh=book.sheets[idx];(sh.rows||[]).forEach(r=>delete r[rec.sheetColumn]);consRecomputeSummary(sh);
+}
+function consLinesKey(lines){return (lines||[]).map(l=>`${norm(l.code)||norm(l.product)}=${numberValue(l.quantity)}`).sort().join('|');}
+let consSyncing=false;
+function syncConsignments(){
+ if(consSyncing||!book||!Array.isArray(book.sheets))return false;
+ consSyncing=true;let changed=false;
+ try{
+  if(!Array.isArray(book.consignaciones))book.consignaciones=[];
+  const used=id=>(book.ventasConsumos||[]).some(m=>m.sourceType==='consignacion'&&String(m.sourceId||'')===String(id));
+  let idx=consSheetIndex();
+  // 1) Página → hoja: consignaciones sin columna (o cuya hoja no existe) se escriben en la hoja.
+  const sheetExists=idx>=0;
+  let touched=null;
+  if(sheetExists){
+   const L=consSheetLayout(book.sheets[idx]);
+   book.consignaciones=book.consignaciones.filter(rec=>{
+    if(!rec.sheetColumn||L.cols.includes(rec.sheetColumn))return true;
+    // La columna se borró en la hoja: se borra la consignación (salvo que ya haya abastecido ventas).
+    if(used(rec.id)){delete rec.sheetColumn;return true;}
+    changed=true;return false;
+   });
+  }
+  for(const rec of book.consignaciones){
+   if(rec.sheetColumn&&sheetExists)continue;
+   // ¿Ya existe en la hoja una columna sin vincular con el mismo cliente, fecha y cantidades? Se vincula.
+   if(consSheetIndex()>=0){
+    const L=consSheetLayout(book.sheets[consSheetIndex()]);
+    const linked=new Set(book.consignaciones.map(r=>r.sheetColumn).filter(Boolean));
+    const match=L.clientCols.find(c=>{if(linked.has(c))return false;const d=consColumnData(L,c);return norm(d.client)===norm(rec.client)&&(!d.date||!rec.date||d.date===rec.date)&&consLinesKey(d.lines)===consLinesKey(rec.lines);});
+    if(match){rec.sheetColumn=match;if(!rec.origin)rec.origin='page';changed=true;continue;}
+   }
+   touched=consWriteColumn(rec);if(!rec.origin)rec.origin='page';changed=true;
+  }
+  if(touched)consRecomputeSummary(touched);
+  // 2) Hoja → página: cada columna de cliente con cantidades es una consignación.
+  idx=consSheetIndex();
+  if(idx>=0){
+   const L=consSheetLayout(book.sheets[idx]);
+   for(const col of L.clientCols){
+    const d=consColumnData(L,col);
+    let rec=book.consignaciones.find(r=>r.sheetColumn===col);
+    if(!d.lines.length){
+     // Columna vacía (por ejemplo "Cliente 12"): no es una consignación. Si estaba vinculada y quedó vacía, se borra.
+     if(rec&&!used(rec.id)){book.consignaciones=book.consignaciones.filter(r=>r!==rec);changed=true;}
+     continue;
+    }
+    if(!rec){
+     book.consignacionCounter=(Number(book.consignacionCounter)||0)+1;
+     rec={id:uid(),number:'CON-'+String(book.consignacionCounter).padStart(5,'0'),operation:'Productos en consignación',client:d.client,date:d.date,estimatedDate:d.date,label:'',lines:d.lines,createdAt:new Date().toISOString(),createdBy:'Hoja de Registros',origin:'sheet',sheetColumn:col};
+     book.consignaciones.push(rec);changed=true;continue;
+    }
+    if(norm(rec.client)!==norm(d.client)){rec.client=d.client;changed=true;}
+    if(d.date&&rec.date!==d.date){rec.date=d.date;rec.estimatedDate=d.date;changed=true;}
+    if(consLinesKey(rec.lines)!==consLinesKey(d.lines)){rec.lines=d.lines;changed=true;}
+   }
+  }
+ }catch(e){console.warn('No se pudo sincronizar la hoja de consignación:',e);}
+ finally{consSyncing=false;}
+ return changed;
+}
+/* Orden de columnas al mostrar la hoja de consignación: resumen, producto y código; después los clientes reales por fecha; al final las columnas genéricas vacías. */
+function consDisplayColumns(sh,cols){
+ if(consSheetIndex()<0||book.sheets[consSheetIndex()]!==sh)return cols;
+ const L=consSheetLayout(sh);
+ const fixed=[L.sumCol,L.nameCol,L.codeCol].filter(Boolean);
+ const info=L.clientCols.map((c,i)=>{const d=consColumnData(L,c);return {c,i,has:d.lines.length>0||(!CONS_GENERIC_RE.test(c)&&!!(L.dateRow&&String(L.dateRow[c]??'').trim())),date:d.date||'9999-99-99',generic:CONS_GENERIC_RE.test(String(c).trim())};});
+ const real=info.filter(x=>x.has&&!x.generic).sort((a,b)=>a.date.localeCompare(b.date)||a.i-b.i);
+ const genericWithData=info.filter(x=>x.has&&x.generic).sort((a,b)=>a.date.localeCompare(b.date)||a.i-b.i);
+ const rest=info.filter(x=>!x.has).sort((a,b)=>a.i-b.i);
+ return [...fixed,...real.map(x=>x.c),...genericWithData.map(x=>x.c),...rest.map(x=>x.c)];
+}
 const ENTRY_CONFIG={
  cons:{linesId:'consLines',statusId:'consStatus',productsKey:'consignaciones',counterKey:'consignacionCounter',prefix:'CON',operation:'Productos en consignación',tableId:'consTable',clientId:'consClient',dateId:'consDate',title:'consignación'},
  pedido:{linesId:'pedidoLines',statusId:'pedidoStatus',productsKey:'pedidosFabricacion',counterKey:'pedidoCounter',prefix:'FAB',operation:'Pedido de fabricación',tableId:'pedidoTable',clientId:'pedidoClient',dateId:'pedidoDate',title:'pedido de fabricación'},
@@ -2584,7 +2740,7 @@ async function saveEntry(type){
  const record={id:uid(),number:cfg.prefix+'-'+String(book[cfg.counterKey]).padStart(5,'0'),operation:cfg.operation,client,date,estimatedDate:date,label:type==='shipment'?($('shipmentLabel').value.trim()):'',...(type==='shipment'?{invoiceNumber:$('shipmentInvoice').value.trim(),container:$('shipmentContainer').value.trim(),instances:shipmentDefaultInstances()}:{}),createdAt:now,createdBy:currentUser?.email||'Usuario',lines};
  book[cfg.productsKey]=book[cfg.productsKey]||[];book[cfg.productsKey].push(record);
  try{await saveBook();message(cfg.statusId,`${cfg.operation}: ${record.number} registrado correctamente.`);entryDrafts[type]=[{productKey:'',product:'',code:'',quantity:1}];if(cfg.clientId)$(cfg.clientId).value='';$(cfg.dateId).value='';if(type==='shipment'){$('shipmentLabel').value='';$('shipmentInvoice').value='';$('shipmentContainer').value='';}renderEntryLines(type);renderEntryTable(type);if(type==='shipment')renderShipmentCards();renderInventory();}
- catch(e){book[cfg.productsKey]=book[cfg.productsKey].filter(x=>x.id!==record.id);book[cfg.counterKey]--;message(cfg.statusId,'No se pudo guardar: '+e.message,true);}
+ catch(e){if(type==='cons'&&record.sheetColumn)consRemoveColumn(record);book[cfg.productsKey]=book[cfg.productsKey].filter(x=>x.id!==record.id);book[cfg.counterKey]--;message(cfg.statusId,'No se pudo guardar: '+e.message,true);}
 }
 function renderConsignmentMatrix(){
   const box=$('consignmentMatrix');if(!box)return;
@@ -2657,7 +2813,7 @@ function renderEntryTable(type){
    try{await saveBook();renderEntryTable('shipment');renderShipmentCards();renderInventory();}
    catch(e){Object.assign(rec,previous);if(previous.received===undefined)delete rec.received;if(previous.receivedAt===undefined)delete rec.receivedAt;if(previous.receivedBy===undefined)delete rec.receivedBy;alert('No se pudo actualizar el estado del embarque: '+e.message);renderEntryTable('shipment');}
  });
- box.querySelectorAll('[data-entry-delete]').forEach(btn=>btn.onclick=async()=>{const [t,id]=btn.dataset.entryDelete.split(':');const c=ENTRY_CONFIG[t];const used=(book.ventasConsumos||[]).some(m=>String(m.sourceId||'')===String(id));if(used){alert('No se puede eliminar este registro porque ya abasteció una o más ventas.');return;}if(!confirm('¿Eliminar este registro?'))return;const prev=book[c.productsKey];book[c.productsKey]=prev.filter(r=>r.id!==id);try{await saveBook();renderEntryTable(t);if(t==='shipment')renderShipmentCards();renderInventory();}catch(e){book[c.productsKey]=prev;alert('No se pudo eliminar: '+e.message);}});
+ box.querySelectorAll('[data-entry-delete]').forEach(btn=>btn.onclick=async()=>{const [t,id]=btn.dataset.entryDelete.split(':');const c=ENTRY_CONFIG[t];const used=(book.ventasConsumos||[]).some(m=>String(m.sourceId||'')===String(id));if(used){alert('No se puede eliminar este registro porque ya abasteció una o más ventas.');return;}const delRec=(book[c.productsKey]||[]).find(r=>r.id===id);if(!confirm(t==='cons'&&delRec?.sheetColumn?`¿Eliminar este registro? También se borrará su columna «${delRec.sheetColumn}» de la hoja de consignación.`:'¿Eliminar este registro?'))return;const prev=book[c.productsKey];const consIdx=consSheetIndex();const prevSheetRows=(t==='cons'&&consIdx>=0)?JSON.parse(JSON.stringify(book.sheets[consIdx].rows)):null;if(t==='cons'&&delRec)consRemoveColumn(delRec);book[c.productsKey]=prev.filter(r=>r.id!==id);try{await saveBook();renderEntryTable(t);if(t==='shipment')renderShipmentCards();if(t==='cons'&&typeof renderConsignmentMatrix==='function')renderConsignmentMatrix();if(activeTab==='records')renderRecords();renderInventory();}catch(e){book[c.productsKey]=prev;if(prevSheetRows)book.sheets[consIdx].rows=prevSheetRows;alert('No se pudo eliminar: '+e.message);}});
 }
 
 
