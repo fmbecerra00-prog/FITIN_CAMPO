@@ -658,11 +658,12 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
 });
 const $ = id => document.getElementById(id);
-// Modo público de solo lectura: abrir con ?public=1 en el enlace publicado.
-const PUBLIC_MODE = new URLSearchParams(window.location.search).get("public") === "1";
-// La interfaz de diseño queda reservada a la cuenta administradora. La seguridad real también se aplica con RLS en Supabase.
-const ADMIN_EMAIL = "fmbecerra00@gmail.com";
-function isAdminUser() { return !!currentUser && String(currentUser.email || "").trim().toLowerCase() === ADMIN_EMAIL.trim().toLowerCase(); }
+// Sin vista pública: para ver cualquier dato hay que iniciar sesión (el parámetro ?public=1 ya no hace nada).
+const PUBLIC_MODE = false;
+// Quién es administrador se define en Supabase (app_metadata.role = "admin"), no en este código.
+// app_metadata solo lo puede cambiar Supabase: un usuario no puede darse ese rol a sí mismo.
+// La seguridad real la aplican las reglas RLS en Supabase; esto solo muestra u oculta opciones de la interfaz.
+function isAdminUser() { return !!currentUser && currentUser.app_metadata?.role === "admin"; }
 
 const DEFAULT_DESIGN = {
   title:"FITIN CAMPO",subtitle:"Gestión de productos y stock",
@@ -1116,7 +1117,9 @@ async function startApp() {
     const {data,error}=await sb.auth.getSession();
     if(error) throw error;
     if(data.session?.user) {
-      currentUser=data.session.user;
+      // Se consultan los datos actuales del usuario en Supabase (incluido su rol), no los guardados en el navegador.
+      const fresh=await sb.auth.getUser();
+      currentUser=fresh.data?.user||data.session.user;
       await startApp();
     }
   } catch(err) {
