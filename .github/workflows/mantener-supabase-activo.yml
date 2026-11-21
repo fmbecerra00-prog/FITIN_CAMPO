@@ -30,7 +30,7 @@ jobs:
         run: |
           for intento in 1 2 3; do
             codigo=$(curl -s -o respuesta.txt -w "%{http_code}" --max-time 30 \
-              "$SUPABASE_URL/rest/v1/app_state?select=id&limit=1" \
+              "$SUPABASE_URL/rest/v1/keepalive?select=id&limit=1" \
               -H "apikey: $SUPABASE_KEY")
             echo "Intento $intento: respuesta HTTP $codigo"
             if [ "$codigo" = "200" ]; then
