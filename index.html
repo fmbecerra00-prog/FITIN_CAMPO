@@ -1687,11 +1687,21 @@ function inventoryRows() {
   const loc=selectedLocationConfig();
   const grouped=new Map();
   const productKey=(name,code)=>String(code||'').trim()?('code:'+norm(code)):('name:'+norm(name));
+  // Un mismo producto puede figurar en la hoja sin código y en "Productos creados" con código
+  // (o al revés). Se unifican por nombre para que el stock real y el código queden en una sola fila.
   const ensure=(name,code='')=>{
     name=String(name??'').trim(); code=String(code??'').trim(); if(!name)return null;
     const key=productKey(name,code);
-    if(!grouped.has(key)) grouped.set(key,{key,name,code,trenque:0,consignacion:0,fabricacion:0,legacyEmbarques:0,shipmentValues:{},embarques:0,demanda:0});
-    const item=grouped.get(key); if(!item.code&&code)item.code=code; return item;
+    if(grouped.has(key)) return grouped.get(key);
+    const sameName=[...grouped.values()].filter(x=>norm(x.name)===norm(name));
+    if(code){
+      const noCode=sameName.find(x=>!x.code);
+      if(noCode){grouped.delete(noCode.key);noCode.code=code;noCode.key=key;grouped.set(key,noCode);return noCode;}
+    }else if(sameName.length){
+      return sameName[0];
+    }
+    const item={key,name,code,trenque:0,consignacion:0,fabricacion:0,legacyEmbarques:0,shipmentValues:{},embarques:0,demanda:0};
+    grouped.set(key,item); return item;
   };
   // Si la columna de embarques de la hoja ya se importó como embarque, se cuenta solo una vez (como embarque registrado).
   const invSheetName=book.sheets[c.sheet]?.name;
@@ -1905,7 +1915,19 @@ const salesUid=()=>uid();
 function salesProductRows(){return inventoryRows();}
 function salesFindProduct(line){
  const rows=salesProductRows();
- return rows.find(r=>line.code&&norm(r.code)===norm(line.code))||rows.find(r=>line.product&&norm(r.name)===norm(line.product));
+ return rows.find(r=>line.code&&r.code&&norm(r.code)===norm(line.code))||rows.find(r=>line.product&&norm(r.name)===norm(line.product));
+}
+/* Catálogo para el desplegable de ventas: un solo ítem por producto, con el código que figura en el stock. */
+function salesCatalog(){
+ const inv=salesProductRows();const out=[];
+ buildRequestCatalog().forEach(p=>{
+  const invRow=(p.code&&inv.find(r=>r.code&&norm(r.code)===norm(p.code)))||inv.find(r=>norm(r.name)===norm(p.name));
+  const code=p.code||invRow?.code||'';
+  const dup=out.find(x=>norm(x.name)===norm(p.name)&&(!x.code||!code||norm(x.code)===norm(code)));
+  if(dup){if(!dup.code&&code)dup.code=code;return;}
+  out.push({...p,code});
+ });
+ return out;
 }
 function salesNewLine(data={}){return {id:salesUid(),product:data.product||'',code:data.code||'',invoiceDescription:data.invoiceDescription||'',quantity:Math.max(1,Math.round(Number(data.quantity)||1)),unit:data.unit||'unidades',unitPrice:Math.max(0,numberValue(data.unitPrice)),bonif:Math.max(0,numberValue(data.bonif)),ivaRate:Math.max(0,numberValue(data.ivaRate)),allocations:[]};}
 function salesLineSubtotal(l){return Math.round(numberValue(l.quantity)*numberValue(l.unitPrice)*(1-numberValue(l.bonif)/100)*100)/100;}
@@ -2050,22 +2072,29 @@ async function readSalesPdf(file){
   $('salesPdfStatus').textContent=parsed.lines.length?`PDF leído: ${pdf.numPages} página(s). Se detectaron ${parsed.lines.length} línea(s) de producto; revisá los datos.`:`PDF leído (${pdf.numPages} página(s)), pero no se identificaron productos con seguridad. Cargalos o corregilos manualmente; el texto extraído queda disponible para revisar.`;
  }catch(e){$('salesPdfStatus').textContent='No se pudo leer el PDF: '+(e?.message||e);}
 }
-function salesLedgerUsed(type,sourceId,line){return (book.ventasConsumos||[]).filter(m=>m.sourceType===type&&String(m.sourceId||'')===String(sourceId||'')&&((line.code&&norm(m.code)===norm(line.code))||(!line.code&&norm(m.product)===norm(line.product)))).reduce((a,m)=>a+numberValue(m.quantity),0);}
-function salesLineMatches(a,b){return (a.code&&b.code&&norm(a.code)===norm(b.code))||(!a.code&&!b.code&&norm(a.product)===norm(b.product));}
+/* Dos líneas son el mismo producto si coinciden por código; si alguna no tiene código, se comparan por nombre. */
+function salesLineMatches(a,b){
+ const ac=String(a?.code||'').trim(),bc=String(b?.code||'').trim();
+ if(ac&&bc)return norm(ac)===norm(bc);
+ return !!(a?.product&&b?.product&&norm(a.product)===norm(b.product));
+}
+/* Identifica la línea por el producto del inventario (código + nombre registrados), no solo por lo que trae la factura. */
+function salesLineIdentity(line){const row=salesFindProduct(line);return row?{product:row.name,code:row.code}:{product:line.product,code:line.code};}
+function salesLedgerUsed(type,sourceId,line){const id=salesLineIdentity(line);return (book.ventasConsumos||[]).filter(m=>m.sourceType===type&&String(m.sourceId||'')===String(sourceId||'')&&salesLineMatches(id,m)).reduce((a,m)=>a+numberValue(m.quantity),0);}
 function salesSourceOptions(line){
  const row=salesFindProduct(line);if(!row)return [];
- const options=[];
+ const options=[];const ident={product:row.name,code:row.code};
  options.push({key:'trenque:',sourceType:'trenque',sourceId:'',label:'Stock Trenque Lauquen',dateLabel:'Disponible actualmente',available:Math.max(0,row.trenque)});
  let consRecNet=0;
- (book.consignaciones||[]).forEach(rec=>(rec.lines||[]).filter(l=>salesLineMatches(line,l)).forEach(l=>{const qty=Math.max(0,numberValue(l.quantity)-salesLedgerUsed('consignacion',rec.id,line));consRecNet+=qty;if(qty>0)options.push({key:'consignacion:'+rec.id,sourceType:'consignacion',sourceId:rec.id,label:'Consignación · '+(rec.client||'Cliente sin identificar')+' · '+(rec.number||''),dateLabel:rec.date?'Fecha: '+formatDateOnly(rec.date):'Fecha no informada',available:qty});}));
+ (book.consignaciones||[]).forEach(rec=>(rec.lines||[]).filter(l=>salesLineMatches(ident,l)).forEach(l=>{const qty=Math.max(0,numberValue(l.quantity)-salesLedgerUsed('consignacion',rec.id,line));consRecNet+=qty;if(qty>0)options.push({key:'consignacion:'+rec.id,sourceType:'consignacion',sourceId:rec.id,label:'Consignación · '+(rec.client||'Cliente sin identificar')+' · '+(rec.number||''),dateLabel:rec.date?'Fecha: '+formatDateOnly(rec.date):'Fecha no informada',available:qty});}));
  const legacyCons=Math.max(0,row.consignacion-consRecNet);options.push({key:'consignacion_legacy:',sourceType:'consignacion',sourceId:'legacy',label:'Consignación · saldo importado sin cliente',dateLabel:'Sin detalle de cliente',available:legacyCons});
  let fabRecNet=0;
- (book.pedidosFabricacion||[]).forEach(rec=>(rec.lines||[]).filter(l=>salesLineMatches(line,l)).forEach(l=>{const qty=Math.max(0,numberValue(l.quantity)-salesLedgerUsed('fabricacion',rec.id,line));fabRecNet+=qty;if(qty>0)options.push({key:'fabricacion:'+rec.id,sourceType:'fabricacion',sourceId:rec.id,label:'En fabricación · '+(rec.client||'Sin cliente')+' · '+(rec.number||''),dateLabel:rec.date?'Fecha registrada: '+formatDateOnly(rec.date):'Sin fecha informada',available:qty});}));
+ (book.pedidosFabricacion||[]).forEach(rec=>(rec.lines||[]).filter(l=>salesLineMatches(ident,l)).forEach(l=>{const qty=Math.max(0,numberValue(l.quantity)-salesLedgerUsed('fabricacion',rec.id,line));fabRecNet+=qty;if(qty>0)options.push({key:'fabricacion:'+rec.id,sourceType:'fabricacion',sourceId:rec.id,label:'En fabricación · '+(rec.client||'Sin cliente')+' · '+(rec.number||''),dateLabel:rec.date?'Fecha registrada: '+formatDateOnly(rec.date):'Sin fecha informada',available:qty});}));
  const legacyFab=Math.max(0,row.fabricacion-fabRecNet);options.push({key:'fabricacion_legacy:',sourceType:'fabricacion',sourceId:'legacy',label:'Fabricación · saldo importado',dateLabel:'Sin detalle de orden',available:legacyFab});
  let shipmentOptions=0;
  (book.embarques||[]).filter(rec=>!(rec.receivedAt||rec.received)).forEach(rec=>{
    const eta=rec.date||rec.estimatedDate||'';const eligible=true;
-   (rec.lines||[]).filter(l=>salesLineMatches(line,l)).forEach(l=>{const qty=Math.max(0,numberValue(l.quantity)-salesLedgerUsed('shipment',rec.id,line));shipmentOptions++;options.push({key:'shipment:'+rec.id,sourceType:'shipment',sourceId:rec.id,label:'Embarque · '+(rec.label||rec.number||'Sin referencia'),dateLabel:eta?'Ingreso estimado: '+formatDateOnly(eta):'Fecha de ingreso no informada',available:qty,eligible,dateWarning:''});});
+   (rec.lines||[]).filter(l=>salesLineMatches(ident,l)).forEach(l=>{const qty=Math.max(0,numberValue(l.quantity)-salesLedgerUsed('shipment',rec.id,line));shipmentOptions++;options.push({key:'shipment:'+rec.id,sourceType:'shipment',sourceId:rec.id,label:'Embarque · '+(rec.label||rec.number||'Sin referencia'),dateLabel:eta?'Ingreso estimado: '+formatDateOnly(eta):'Fecha de ingreso no informada',available:qty,eligible,dateWarning:''});});
  });
  if(!shipmentOptions)options.push({key:'shipment:none',sourceType:'shipment',sourceId:'',label:'Embarques provenientes',dateLabel:'No hay embarques pendientes para este producto',available:0,eligible:false,dateWarning:'Sin disponibilidad'});
  return options;
@@ -2074,14 +2103,15 @@ function salesSelectedForSource(sourceKey,excludeLineId){return salesDraftLines.
 function renderSalesLines(){
  const box=$('salesLines');if(!box)return;
  if(!salesDraftLines.length)salesDraftLines=[salesNewLine()];
- const catalog = buildRequestCatalog();
+ const catalog = salesCatalog();
  box.innerHTML='<table class="request-lines"><thead><tr><th>Producto vendido</th><th>Código</th><th>Cantidad / Demanda</th><th>U. medida</th><th>Precio unit.</th><th>% Bonif.</th><th>Subtotal</th><th>Alícuota IVA (%)</th><th>Subtotal c/IVA</th><th></th></tr></thead><tbody>'+salesDraftLines.map(l=>{
-   const selected = catalog.find(p => (l.code && norm(p.code)===norm(l.code)) || (!l.code && norm(p.name)===norm(l.product)));
-   const invoiceNote=(l.invoiceDescription&&norm(l.invoiceDescription)!==norm(selected?.name||'')?`<small class="muted">En la factura: ${esc(l.invoiceDescription)}</small>`:'')+(!selected&&(l.invoiceDescription||l.product)?'<small class="status error">No se encontró en el listado de stock: elegí el producto para completar el código.</small>':'');
+   const selected = catalog.find(p => l.code && p.code && norm(p.code)===norm(l.code)) || catalog.find(p => l.product && norm(p.name)===norm(l.product));
+   if(selected&&!l.code&&selected.code)l.code=selected.code;
+   const invoiceNote=(l.invoiceDescription&&norm(l.invoiceDescription)!==norm(selected?.name||'')?`<small class="muted" style="display:block;margin-top:4px">En la factura: ${esc(l.invoiceDescription)}</small>`:'')+(!selected&&(l.invoiceDescription||l.product)?'<small class="status error" style="display:block;margin-top:4px">No se encontró en el listado de stock: elegí el producto para completar el código.</small>':'');
    return `<tr><td><select data-sales-product="${l.id}" aria-label="Elegir producto"><option value="">— Elegir producto —</option>${catalog.map(p=>`<option value="${esc(p.key)}" ${(selected?.key===p.key)?'selected':''}>${esc(p.name)}</option>`).join('')}</select>${invoiceNote}</td><td><input data-sales-code="${l.id}" value="${esc(selected?.code||l.code)}" readonly placeholder="Código automático"></td><td><input type="number" min="1" step="1" data-sales-qty="${l.id}" value="${l.quantity}"></td><td><input data-sales-unit="${l.id}" value="${esc(l.unit||'')}" style="min-width:90px"></td><td><input type="number" min="0" step="0.01" data-sales-price="${l.id}" value="${l.unitPrice}"></td><td><input type="number" min="0" max="100" step="0.01" data-sales-bonif="${l.id}" value="${numberValue(l.bonif)}" style="max-width:90px"></td><td><strong>${salesMoney(salesLineSubtotal(l))}</strong></td><td><input type="number" min="0" step="0.01" data-sales-iva="${l.id}" value="${numberValue(l.ivaRate)}" style="max-width:90px"></td><td><strong>${salesMoney(salesLineTotalIva(l))}</strong></td><td><button type="button" class="danger" data-sales-remove="${l.id}">Quitar</button></td></tr>`;
  }).join('')+'</tbody></table>';
  const find=id=>salesDraftLines.find(x=>x.id===id);
- box.querySelectorAll('[data-sales-product]').forEach(el=>el.onchange=()=>{const l=find(el.dataset.salesProduct);const p=catalog.find(x=>x.key===el.value);l.product=p?.name||'';l.code=p?.code||'';l.allocations=[];renderSalesLines();renderSalesAllocations();});
+ box.querySelectorAll('[data-sales-product]').forEach(el=>el.onchange=()=>{const l=find(el.dataset.salesProduct);const p=catalog.find(x=>x.key===el.value);const inv=p?salesFindProduct({product:p.name,code:p.code}):null;l.product=inv?.name||p?.name||'';l.code=p?.code||inv?.code||'';l.allocations=[];renderSalesLines();renderSalesAllocations();});
  box.querySelectorAll('[data-sales-qty]').forEach(el=>el.onchange=()=>{const l=find(el.dataset.salesQty);l.quantity=Math.max(1,Math.floor(Number(el.value)||1));renderSalesLines();renderSalesAllocations();});
  box.querySelectorAll('[data-sales-unit]').forEach(el=>el.onchange=()=>{find(el.dataset.salesUnit).unit=el.value.trim();});
  box.querySelectorAll('[data-sales-price]').forEach(el=>el.onchange=()=>{find(el.dataset.salesPrice).unitPrice=Math.max(0,numberValue(el.value));renderSalesLines();});
