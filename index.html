@@ -1726,6 +1726,28 @@ function locationColumns() {
 function selectedLocationConfig() {
   return {trenque:$("locTrenque").value,consignacion:$("locConsignacion").value,fabricacion:$("locFabricacion").value,embarques:$("locEmbarques").value};
 }
+/* EMBARQUES DUPLICADOS
+   Un mismo embarque puede quedar registrado dos veces cuando cambia la hoja de inventario
+   (p. ej. «Embarque 01/12» importado desde «Tablero General» y otra vez desde «Stock_27_10»).
+   Se considera el mismo embarque si viene de una hoja, tiene la misma etiqueta y fecha y comparte productos.
+   Se cuenta UNO solo: el recibido (si alguno se marcó como recibido) o, si no, el vinculado a la hoja actual. */
+function shipmentDuplicateMap(){
+ const recs=(book.embarques||[]).filter(r=>r.origin==='sheet');
+ const invName=book.sheets?.[Number(book.productConfig?.sheet)||0]?.name||'';
+ const groups=new Map();
+ recs.forEach(r=>{const k=norm(r.label||r.sheetColumn||'')+'|'+String(r.date||r.estimatedDate||'');if(!groups.has(k))groups.set(k,[]);groups.get(k).push(r);});
+ const dup=new Map();
+ groups.forEach(list=>{
+  if(list.length<2)return;
+  const codes=r=>new Set((r.lines||[]).map(l=>norm(l.code||l.product)));
+  const isRec=r=>!!(r.receivedAt||r.received);
+  const keep=list.find(isRec)||list.find(r=>r.sheetName===invName&&r.sheetKey)||list.find(r=>r.sheetKey)||list[0];
+  const kc=codes(keep);
+  list.forEach(r=>{if(r!==keep&&[...codes(r)].some(c=>kc.has(c)))dup.set(String(r.id),keep);});
+ });
+ return dup;
+}
+function effectiveShipments(){const dup=shipmentDuplicateMap();return (book.embarques||[]).filter(r=>!dup.has(String(r.id)));}
 function inventoryRows() {
   const c={sheet:Number($("productSheet").value||0),name:$("productNameCol").value,code:$("productCodeCol").value};
   const loc=selectedLocationConfig();
@@ -1780,7 +1802,7 @@ function inventoryRows() {
   }));
   // Cada embarque conserva su propia columna, con su fecha y referencia.
   // Los recibidos también se muestran como historial, pero su cantidad ya está incluida en Trenque Lauquen.
-  const shipmentRecords=[...(book.embarques||[])].sort((a,b)=>String(a.date||a.estimatedDate||'').localeCompare(String(b.date||b.estimatedDate||''))||String(a.createdAt||'').localeCompare(String(b.createdAt||'')));
+  const shipmentRecords=[...effectiveShipments()].sort((a,b)=>String(a.date||a.estimatedDate||'').localeCompare(String(b.date||b.estimatedDate||''))||String(a.createdAt||'').localeCompare(String(b.createdAt||'')));
   shipmentRecords.filter(rec=>rec.receivedAt || rec.received).forEach(rec=>(rec.lines||[]).forEach(line=>{
     const item=findItem(line); if(!item)return; item.trenque+=numberValue(line.quantity);
   }));
@@ -1849,8 +1871,8 @@ function renderInventory() {
   const loc=selectedLocationConfig();
   const invSheet=book.sheets[sheetIndex];const invSheetName=invSheet?.name;
   const sheetCols=invSheet?consDisplayColumns(invSheet,sourceCols):sourceCols;
-  const allShipments=book.embarques||[];
-  const shipForCol=c=>allShipments.find(rec=>rec.sheetKey===shipSheetKey(invSheetName,c)||rec.sheetKeyDetached===shipSheetKey(invSheetName,c));
+  const allShipments=book.embarques||[];const shipDup=shipmentDuplicateMap();
+  const shipForCol=c=>{const rec=allShipments.find(rec=>rec.sheetKey===shipSheetKey(invSheetName,c)||rec.sheetKeyDetached===shipSheetKey(invSheetName,c));return rec?(shipDup.get(String(rec.id))||rec):rec;};
   const shipPending=(r,rec)=>(rec.receivedAt||rec.received)?0:numberValue(r.shipmentValues?.['shipment_'+(rec.id||rec.number)]||0);
   const totalNames=['total general','stock total','total stock','total unidades','stock general'];
   const kind={};
@@ -1928,7 +1950,7 @@ function traceDataForProduct(row){
  const used=(type,id)=> (book.ventasConsumos||[]).filter(m=>m.sourceType===type&&String(m.sourceId||'')===String(id||'')&&((row.code&&norm(m.code)===norm(row.code))||(!row.code&&norm(m.product)===norm(row.name)))).reduce((a,m)=>a+numberValue(m.quantity),0);
  const cons=(book.consignaciones||[]).flatMap(rec=>(rec.lines||[]).filter(matches).map(l=>({client:rec.client||'Cliente sin identificar',number:rec.number||'',quantity:Math.max(0,numberValue(l.quantity)-used('consignacion',rec.id)),date:rec.date||''}))).filter(x=>x.quantity>0);
  const fabrication=(book.pedidosFabricacion||[]).flatMap(rec=>(rec.lines||[]).filter(matches).map(l=>({number:rec.number||'',quantity:Math.max(0,numberValue(l.quantity)-used('fabricacion',rec.id)),date:rec.date||''}))).filter(x=>x.quantity>0);
- const shipments=(book.embarques||[]).flatMap(rec=>(rec.lines||[]).filter(matches).map(l=>({number:rec.number||rec.label||'Embarque',quantity:Math.max(0,numberValue(l.quantity)-used('shipment',rec.id)),received:!!(rec.receivedAt||rec.received),date:rec.date||rec.estimatedDate||''})));
+ const shipments=effectiveShipments().flatMap(rec=>(rec.lines||[]).filter(matches).map(l=>({number:rec.number||rec.label||'Embarque',quantity:Math.max(0,numberValue(l.quantity)-used('shipment',rec.id)),received:!!(rec.receivedAt||rec.received),date:rec.date||rec.estimatedDate||''})));
  return {cons,fabrication,shipments};
 }
 function renderTraceability(){
@@ -2190,7 +2212,7 @@ function salesSourceOptions(line){
  (book.pedidosFabricacion||[]).forEach(rec=>(rec.lines||[]).filter(l=>salesLineMatches(ident,l)).forEach(l=>{const qty=Math.max(0,numberValue(l.quantity)-salesLedgerUsed('fabricacion',rec.id,line));fabRecNet+=qty;if(qty>0)options.push({key:'fabricacion:'+rec.id,sourceType:'fabricacion',sourceId:rec.id,label:'En fabricación · '+(rec.client||'Sin cliente')+' · '+(rec.number||''),dateLabel:rec.date?'Fecha registrada: '+formatDateOnly(rec.date):'Sin fecha informada',available:qty});}));
  const legacyFab=Math.max(0,row.fabricacion-fabRecNet);options.push({key:'fabricacion_legacy:',sourceType:'fabricacion',sourceId:'legacy',label:'Fabricación · saldo importado',dateLabel:'Sin detalle de orden',available:legacyFab});
  let shipmentOptions=0;
- (book.embarques||[]).filter(rec=>!(rec.receivedAt||rec.received)).forEach(rec=>{
+ effectiveShipments().filter(rec=>!(rec.receivedAt||rec.received)).forEach(rec=>{
    const eta=rec.date||rec.estimatedDate||'';const eligible=true;
    (rec.lines||[]).filter(l=>salesLineMatches(ident,l)).forEach(l=>{const qty=Math.max(0,numberValue(l.quantity)-salesLedgerUsed('shipment',rec.id,line));shipmentOptions++;options.push({key:'shipment:'+rec.id,sourceType:'shipment',sourceId:rec.id,label:'Embarque · '+(rec.label||rec.number||'Sin referencia'),dateLabel:eta?'Ingreso estimado: '+formatDateOnly(eta):'Fecha de ingreso no informada',available:qty,eligible,dateWarning:''});});
  });
@@ -3030,6 +3052,8 @@ function syncShipmentsFromSheets(){
     let rec=book.embarques.find(r=>r.sheetKey===key);
     // Columna que había quedado desvinculada (por ejemplo, vaciada y vuelta a cargar) y no fue recibida: se vuelve a vincular.
     if(!rec){rec=book.embarques.find(r=>r.sheetKeyDetached===key&&!(r.receivedAt||r.received));if(rec){rec.sheetKey=key;delete rec.sheetKeyDetached;rec.sheetSnapshot='';changed=true;}}
+    // El mismo embarque (misma etiqueta y fecha) ya registrado desde otra hoja: se vincula en lugar de duplicarlo.
+    if(!rec){rec=book.embarques.find(r=>r.origin==='sheet'&&!r.sheetKey&&r.sheetKeyDetached&&norm(r.label||r.sheetColumn||'')===norm(d.label||String(col))&&String(r.date||r.estimatedDate||'')===String(d.date||''));if(rec){rec.sheetKey=key;delete rec.sheetKeyDetached;changed=true;if(!(rec.receivedAt||rec.received))rec.sheetSnapshot='';continue;}}
     if(!rec){
      let id='shs_'+shipHash(key);if(book.embarques.some(r=>String(r.id)===id))id='shs_'+shipHash(key+'|'+snap);
      if(book.embarques.some(r=>String(r.id)===id))continue;
@@ -3299,6 +3323,7 @@ function shipmentConsumed(rec){
 }
 function renderShipmentRegistry(){
  const box=$('shipmentTable');if(!box)return;
+ const dupMap=shipmentDuplicateMap();
  const records=[...(book.embarques||[])].sort((a,b)=>{const ra=!!(a.receivedAt||a.received),rb=!!(b.receivedAt||b.received);if(ra!==rb)return ra?1:-1;return String(b.createdAt||'').localeCompare(String(a.createdAt||''));});
  if(!records.length){box.innerHTML='<p class="muted" style="padding:12px">Todavía no hay embarques registrados.</p>';return;}
  box.innerHTML=records.map(rec=>{
@@ -3306,7 +3331,8 @@ function renderShipmentRegistry(){
   const key='se'+id;ENTRY_CONFIG[key]={linesId:'shipEditLines_'+id};
   if(!entryDrafts[key])entryDrafts[key]=(rec.lines||[]).map(l=>({productKey:l.productKey||'',product:l.product,code:l.code||'',quantity:l.quantity}));
   const loaded=instances.filter(i=>i.doc).length;
-  const products=(rec.lines||[]).map(l=>`${esc(l.product)}${l.code?' ('+esc(l.code)+')':''} — ${esc(l.quantity)}`).join('<br>');
+  const dupOf=dupMap.get(id);
+  const products=(dupOf?`<p class="status error" style="margin:0 0 6px">Duplicado de ${esc(dupOf.number||'otro embarque')} (mismo embarque importado desde otra hoja). No se cuenta en el stock.</p>`:'')+(rec.lines||[]).map(l=>`${esc(l.product)}${l.code?' ('+esc(l.code)+')':''} — ${esc(l.quantity)}`).join('<br>');
   const receivedBox=`<label style="display:flex;align-items:center;gap:7px;white-space:nowrap"><input type="checkbox" data-shipment-received="${rid}" ${received?'checked':''}> ${received?'Recibido':'Marcar recibido'}</label>${rec.receivedAt?`<small class="muted">${esc(formatRequestDate(rec.receivedAt))}${rec.receivedBy?' · '+esc(rec.receivedBy):''}</small>`:''}`;
   const instRows=instances.map((inst,i)=>{
    const iid=esc(inst.id),doc=inst.doc,ref=`${rid}|${iid}`;
@@ -3473,7 +3499,7 @@ function renderShipmentCalendar(){
  const first=new Date(year,month,1),last=new Date(year,month+1,0);
  const start=(first.getDay()+6)%7,days=last.getDate();
  const events={};
- (book.embarques||[]).forEach(rec=>{
+ effectiveShipments().forEach(rec=>{
    const estimated=shipmentISODate(rec.date||rec.estimatedDate);
    const actual=shipmentISODate(rec.receivedAt);
    const add=(date,type)=>{if(!date)return;(events[date]??=[]).push({rec,type});};
@@ -3501,7 +3527,7 @@ function renderShipmentCalendar(){
 function renderShipmentCards(){
  renderShipmentCalendar();
  const box=$('shipmentCards');if(!box)return;const today=new Date();today.setHours(0,0,0,0);
- const list=(book.embarques||[]).filter(e=>e.date||e.estimatedDate).map(e=>{const d=new Date((e.date||e.estimatedDate)+'T00:00:00');return {...e,days:Math.ceil((d-today)/86400000)}}).sort((a,b)=>a.days-b.days);
+ const list=effectiveShipments().filter(e=>e.date||e.estimatedDate).map(e=>{const d=new Date((e.date||e.estimatedDate)+'T00:00:00');return {...e,days:Math.ceil((d-today)/86400000)}}).sort((a,b)=>a.days-b.days);
  if(!list.length){box.innerHTML='<p class="muted">No hay próximos embarques registrados. Cuando cargues uno, aparecerá acá con el contador actualizado.</p>';return;}
  box.innerHTML=list.map(e=>{const status=e.days<0?`Fecha estimada vencida hace ${Math.abs(e.days)} día(s)`:e.days===0?'Ingresa hoy':`Faltan ${e.days} día(s) para su ingreso`;const products=(e.lines||[]).map(l=>`<li>${esc(l.product)}${l.code?' · Código '+esc(l.code):''} — Cantidad: ${esc(l.quantity)}</li>`).join('');return `<article class="shipment-card"><h3>${esc(e.label||e.number||'Embarque')}</h3><div class="shipment-days">${status}</div><p><strong>Fecha estimada:</strong> ${esc(formatDateOnly(e.date||e.estimatedDate))}</p><p><strong>Registrado:</strong> ${esc(formatRequestDate(e.createdAt))}</p><strong>Productos incluidos</strong><ul>${products}</ul></article>`;}).join('');
 }
