@@ -1757,6 +1757,7 @@ function inventoryRows() {
     if(move.sourceType==='trenque') item.trenque-=qty;
     else if(move.sourceType==='consignacion') item.consignacion-=qty;
     else if(move.sourceType==='fabricacion') item.fabricacion-=qty;
+    else if(move.sourceType==='shipment'&&String(move.sourceId)==='legacy') item.legacyEmbarques=Math.max(0,item.legacyEmbarques-qty);
     else if(move.sourceType==='shipment'){
       const rec=shipmentRecords.find(x=>String(x.id)===String(move.sourceId));
       if(rec&&(rec.receivedAt||rec.received)) item.trenque-=qty;
@@ -2096,10 +2097,15 @@ function salesSourceOptions(line){
    const eta=rec.date||rec.estimatedDate||'';const eligible=true;
    (rec.lines||[]).filter(l=>salesLineMatches(ident,l)).forEach(l=>{const qty=Math.max(0,numberValue(l.quantity)-salesLedgerUsed('shipment',rec.id,line));shipmentOptions++;options.push({key:'shipment:'+rec.id,sourceType:'shipment',sourceId:rec.id,label:'Embarque · '+(rec.label||rec.number||'Sin referencia'),dateLabel:eta?'Ingreso estimado: '+formatDateOnly(eta):'Fecha de ingreso no informada',available:qty,eligible,dateWarning:''});});
  });
+ const legacyShip=Math.max(0,numberValue(row.legacyEmbarques));if(legacyShip>0){shipmentOptions++;options.push({key:'shipment_legacy:',sourceType:'shipment',sourceId:'legacy',label:'Embarques · saldo importado',dateLabel:'Sin detalle de embarque',available:legacyShip,eligible:true,dateWarning:''});}
  if(!shipmentOptions)options.push({key:'shipment:none',sourceType:'shipment',sourceId:'',label:'Embarques provenientes',dateLabel:'No hay embarques pendientes para este producto',available:0,eligible:false,dateWarning:'Sin disponibilidad'});
  return options;
 }
-function salesSelectedForSource(sourceKey,excludeLineId){return salesDraftLines.filter(l=>l.id!==excludeLineId).reduce((sum,l)=>sum+(l.allocations||[]).filter(a=>a.key===sourceKey).reduce((x,a)=>x+numberValue(a.quantity),0),0);}
+/* Cantidad que OTRAS líneas del MISMO producto ya tomaron de un origen (el stock de un producto no se comparte con otro). */
+function salesSelectedForSource(sourceKey,excludeLineId,line){
+ const self=line||salesDraftLines.find(x=>x.id===excludeLineId);const id=self?salesLineIdentity(self):null;
+ return salesDraftLines.filter(l=>l.id!==excludeLineId&&(!id||salesLineMatches(id,salesLineIdentity(l)))).reduce((sum,l)=>sum+(l.allocations||[]).filter(a=>a.key===sourceKey).reduce((x,a)=>x+numberValue(a.quantity),0),0);
+}
 function renderSalesLines(){
  const box=$('salesLines');if(!box)return;
  if(!salesDraftLines.length)salesDraftLines=[salesNewLine()];
@@ -2125,7 +2131,7 @@ function renderSalesAllocations(){
  if(!salesDraftLines.length){box.innerHTML='<p class="muted">Agregá los productos de la factura.</p>';return;}
  let complete=true;const cards=salesDraftLines.map(line=>{
   const row=salesFindProduct(line);const options=salesSourceOptions(line);let chosen=0;
-  const optionHtml=options.map(o=>{const usedByOther=salesSelectedForSource(o.key,line.id);const available=Math.max(0,o.available-usedByOther);const current=(line.allocations||[]).find(a=>a.key===o.key);const qty=numberValue(current?.quantity);chosen+=qty;if(qty>available||(qty>0&&o.eligible===false))complete=false;
+  const optionHtml=options.map(o=>{const usedByOther=salesSelectedForSource(o.key,line.id,line);const available=Math.max(0,o.available-usedByOther);const current=(line.allocations||[]).find(a=>a.key===o.key);const qty=numberValue(current?.quantity);chosen+=qty;if(qty>available||(qty>0&&o.eligible===false))complete=false;
    return `<div class="sales-source"><div class="sales-source-head"><input type="checkbox" data-sales-source-check="${line.id}|${esc(o.key)}" ${qty>0?'checked':''} ${(o.eligible===false||available<=0)&&qty===0?'disabled':''}><span>${esc(o.label)}</span></div><small>${esc(o.dateLabel)} · Disponible: <strong>${available}</strong>${o.dateWarning?' · <strong>'+esc(o.dateWarning)+'</strong>':''}</small><label>Cantidad a consumir</label><input type="number" min="0" max="${available}" step="1" data-sales-source-qty="${line.id}|${esc(o.key)}" value="${qty}" ${qty>0&&o.eligible!==false?'':'disabled'}></div>`;
   }).join('');
   const invalidChosen=(line.allocations||[]).filter(a=>{const o=options.find(x=>x.key===a.key);return !o||o.eligible===false;}).reduce((n,a)=>n+numberValue(a.quantity),0);const remaining=line.quantity-(chosen-invalidChosen);if(remaining!==0)complete=false;
