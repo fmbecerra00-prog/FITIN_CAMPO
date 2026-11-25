@@ -1875,10 +1875,23 @@ function renderInventory() {
   if(!used.has('total'))extra.push(['Stock total',{t:'total'}]);
   if(!used.has('trenque'))extra.push(['Trenque Lauquen',{t:'trenque'}]);
   if(!used.has('consignacion'))extra.push(['Consignación',{t:'consignacion'}]);
-  if(!used.has('fabricacion'))extra.push(['En fabricación',{t:'fabricacion'}]);
+  if(!used.has('fabricacion'))extra.push(['Pedidos en fabricación',{t:'fabricacion'}]);
   const linkedIds=new Set(Object.values(kind).filter(k=>k.t==='ship').map(k=>String(k.rec.id)));
   shipmentColumns.filter(col=>!linkedIds.has(String(col.id))).forEach(col=>extra.push([col.label,{t:'shipCol',col}]));
   extra.forEach(([h,k])=>{let name=h,n=2;while(headers.includes(name))name=`${h} (${n++})`;headers.push(name);kind[name]=k;});
+  // Orden fijo de Inicio: Descripción, Código, Total general, Stock Trenque Lauquen, Total consignaciones,
+  // Pedidos en fabricación, Embarque 01/12, Embarque 16/11. Después, cualquier otro embarque y el resto
+  // de las columnas (precios, costos, etc.) en el orden del Excel.
+  const INVENTORY_ORDER=[{t:'name'},{t:'code'},{t:'total'},{t:'trenque'},{t:'consignacion'},{t:'fabricacion'},{label:'embarque 01/12'},{label:'embarque 16/11'}];
+  const rank=c=>{
+    const k=kind[c]||{};const n=norm(c);
+    const i=INVENTORY_ORDER.findIndex(o=>o.t?o.t===k.t:n===o.label);
+    if(i>=0)return i;
+    if(['ship','shipCol','legacyShip'].includes(k.t))return INVENTORY_ORDER.length;
+    return INVENTORY_ORDER.length+1;
+  };
+  const baseIndex=new Map(headers.map((c,i)=>[c,i]));
+  headers.sort((x,y)=>rank(x)-rank(y)||baseIndex.get(x)-baseIndex.get(y));
   const totalOf=r=>r.trenque+r.consignacion+r.fabricacion+r.embarques;
   const cellFor=(r,src,c)=>{
     const k=kind[c];
