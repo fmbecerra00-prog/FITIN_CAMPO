@@ -1747,6 +1747,21 @@ function shipmentDuplicateMap(){
  });
  return dup;
 }
+/* ¿La columna «col» de la hoja «sheetName» corresponde al embarque «rec»?
+   Sí si fue importada de esa columna, o si tiene el mismo nombre, o la misma fecha (dd/mm) que el embarque. */
+function shipDayMonth(v){const m=String(v||'').match(/(\d{4})-(\d{2})-(\d{2})/);if(m)return Number(m[3])+'/'+Number(m[2]);const d=String(v||'').match(/(\d{1,2})\s*[\/.-]\s*(\d{1,2})/);return d?Number(d[1])+'/'+Number(d[2]):'';}
+function shipmentMatchesColumn(rec,sheetName,col){
+ const key=shipSheetKey(sheetName,col);
+ if(rec.sheetKey===key||rec.sheetKeyDetached===key)return true;
+ if(!/embarque|llegada|arribo|container|contenedor/i.test(String(col)))return false;
+ if(norm(rec.label||'')===norm(col)||norm(rec.sheetColumn||'')===norm(col))return true;
+ const cd=shipDayMonth(col),rd=shipDayMonth(rec.date||rec.estimatedDate);
+ return !!(cd&&rd&&cd===rd);
+}
+function shipmentForColumn(sheetName,col){
+ const list=effectiveShipments();
+ return list.find(r=>r.sheetKey===shipSheetKey(sheetName,col)||r.sheetKeyDetached===shipSheetKey(sheetName,col))||list.find(r=>shipmentMatchesColumn(r,sheetName,col))||null;
+}
 function effectiveShipments(){const dup=shipmentDuplicateMap();return (book.embarques||[]).filter(r=>!dup.has(String(r.id)));}
 function inventoryRows() {
   const c={sheet:Number($("productSheet").value||0),name:$("productNameCol").value,code:$("productCodeCol").value};
@@ -1771,7 +1786,7 @@ function inventoryRows() {
   };
   // Si la columna de embarques de la hoja ya se importó como embarque, se cuenta solo una vez (como embarque registrado).
   const invSheetName=book.sheets[c.sheet]?.name;
-  const legacyShipLinked=!!loc.embarques&&(book.embarques||[]).some(r=>r.sheetKey===shipSheetKey(invSheetName,loc.embarques)||r.sheetKeyDetached===shipSheetKey(invSheetName,loc.embarques));
+  const legacyShipLinked=!!loc.embarques&&(book.embarques||[]).some(r=>shipmentMatchesColumn(r,invSheetName,loc.embarques));
   activeRows(c.sheet).forEach(r=>{
     const item=ensure(r[c.name],c.code?r[c.code]:''); if(!item)return;
     item.trenque+=loc.trenque?numberValue(r[loc.trenque]):0;
@@ -1872,7 +1887,7 @@ function renderInventory() {
   const invSheet=book.sheets[sheetIndex];const invSheetName=invSheet?.name;
   const sheetCols=invSheet?consDisplayColumns(invSheet,sourceCols):sourceCols;
   const allShipments=book.embarques||[];const shipDup=shipmentDuplicateMap();
-  const shipForCol=c=>{const rec=allShipments.find(rec=>rec.sheetKey===shipSheetKey(invSheetName,c)||rec.sheetKeyDetached===shipSheetKey(invSheetName,c));return rec?(shipDup.get(String(rec.id))||rec):rec;};
+  const shipForCol=c=>{const rec=shipmentForColumn(invSheetName,c);return rec?(shipDup.get(String(rec.id))||rec):null;};
   const shipPending=(r,rec)=>(rec.receivedAt||rec.received)?0:numberValue(r.shipmentValues?.['shipment_'+(rec.id||rec.number)]||0);
   const totalNames=['total general','stock total','total stock','total unidades','stock general'];
   const kind={};
@@ -1882,14 +1897,16 @@ function renderInventory() {
     else if(c===loc.trenque)kind[c]={t:'trenque'};
     else if(c===loc.consignacion)kind[c]={t:'consignacion'};
     else if(c===loc.fabricacion)kind[c]={t:'fabricacion'};
-    else if(shipForCol(c))kind[c]={t:'ship',rec:shipForCol(c)};
+    else if(shipForCol(c))kind[c]={t:'excelShip',rec:shipForCol(c)};
     else if(c===loc.embarques)kind[c]={t:'legacyShip'};
     else if(!isMoneyColumn(c)&&totalNames.includes(norm(c)))kind[c]={t:'total'};
     else kind[c]={t:'source'};
   });
   const used=new Set(Object.values(kind).map(k=>k.t));
   const isPriceCol=c=>kind[c]?.t==='source'&&(isMoneyColumn(c)||/(importe|monto|\$)/i.test(String(c)));
-  const headers=inventoryStockOnly?sheetCols.filter(c=>!isPriceCol(c)):[...sheetCols];
+  // Una columna de embarque del Excel que ya está registrada en la página Embarques no se muestra:
+  // queda solo la columna del embarque registrado (con su fecha y estado).
+  const headers=sheetCols.filter(c=>kind[c].t!=='excelShip'&&!(inventoryStockOnly&&isPriceCol(c)));
   // Lo que el Excel no tiene como columna se agrega al final para no perder información.
   const extra=[];
   if(!used.has('name'))extra.push(['Producto',{t:'name'}]);
@@ -1898,8 +1915,7 @@ function renderInventory() {
   if(!used.has('trenque'))extra.push(['Trenque Lauquen',{t:'trenque'}]);
   if(!used.has('consignacion'))extra.push(['Consignación',{t:'consignacion'}]);
   if(!used.has('fabricacion'))extra.push(['Pedidos en fabricación',{t:'fabricacion'}]);
-  const linkedIds=new Set(Object.values(kind).filter(k=>k.t==='ship').map(k=>String(k.rec.id)));
-  shipmentColumns.filter(col=>!linkedIds.has(String(col.id))).forEach(col=>extra.push([col.label,{t:'shipCol',col}]));
+  shipmentColumns.forEach(col=>{const rec=allShipments.find(r=>String(r.id)===String(col.id));extra.push([col.label,{t:'shipCol',col,rec}]);});
   extra.forEach(([h,k])=>{let name=h,n=2;while(headers.includes(name))name=`${h} (${n++})`;headers.push(name);kind[name]=k;});
   // Orden fijo de Inicio: Descripción, Código, Total general, Stock Trenque Lauquen, Total consignaciones,
   // Pedidos en fabricación, Embarque 01/12, Embarque 16/11. Después, cualquier otro embarque y el resto
@@ -1907,7 +1923,8 @@ function renderInventory() {
   const INVENTORY_ORDER=[{t:'name'},{t:'code'},{t:'total'},{t:'trenque'},{t:'consignacion'},{t:'fabricacion'},{label:'embarque 01/12'},{label:'embarque 16/11'}];
   const rank=c=>{
     const k=kind[c]||{};const n=norm(c);
-    const i=INVENTORY_ORDER.findIndex(o=>o.t?o.t===k.t:n===o.label);
+    const recDM=k.rec?shipDayMonth(k.rec.date||k.rec.estimatedDate):'';
+    const i=INVENTORY_ORDER.findIndex(o=>o.t?o.t===k.t:(n===o.label||(k.rec&&(norm(k.rec.label||'')===o.label||(recDM&&recDM===shipDayMonth(o.label))))));
     if(i>=0)return i;
     if(['ship','shipCol','legacyShip'].includes(k.t))return INVENTORY_ORDER.length;
     return INVENTORY_ORDER.length+1;
