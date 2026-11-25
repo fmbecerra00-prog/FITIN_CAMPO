@@ -319,7 +319,7 @@ footer {text-align:center;color:var(--muted);padding:22px}
       <div id="productCard" class="grid"><p class="muted">Seleccioná un producto para ver sus datos.</p></div>
     </div>
     <div class="panel">
-      <div class="toolbar no-print" style="justify-content:flex-end"><button id="downloadInventoryPdfBtn" class="secondary">Descargar PDF de inventario general de productos</button></div>
+      <div class="toolbar no-print" style="justify-content:flex-end"><button id="downloadInventoryPdfBtn" class="secondary">Descargar PDF de inventario general de productos</button><button id="downloadInventoryStockPdfBtn" class="secondary">Descargar PDF – solo stock (sin precios ni costos)</button></div>
       <div id="inventoryPrintArea">
       <h2>Inventario general de productos</h2>
       <p class="muted availability-date" id="inventoryAvailabilityDate">Disponibilidad —</p>
@@ -363,6 +363,8 @@ footer {text-align:center;color:var(--muted);padding:22px}
         <button id="exportBtn" class="secondary">Exportar Excel</button>
         <button id="saveRecordsBtn">Guardar registros</button>
         <input id="excelFile" type="file" accept=".xlsx,.xls,.csv" class="hidden">
+        <button id="columnOrderBtn" class="secondary" title="Lee el Excel original solo para tomar el orden de las columnas. No modifica ningún dato.">Ordenar columnas como el Excel</button>
+        <input id="columnOrderFile" type="file" accept=".xlsx,.xls,.xlsm,.csv" class="hidden">
       </div>
       <p id="recordsStatus" class="status"></p>
       <div id="recordsTable" class="table-wrap"></div>
@@ -725,6 +727,11 @@ const sheet = () => book.sheets[book.active] || book.sheets[0];
 const activeRows = i => book.sheets[Number(i)]?.rows || [];
 const columns = rows => {
   const result=[];
+  // Supabase (JSONB) reordena las claves de cada fila; por eso se guarda aparte el orden original
+  // de las columnas del Excel (columnOrder) y se respeta siempre ese orden.
+  const owner=(typeof book!=="undefined"&&book&&Array.isArray(book.sheets))?book.sheets.find(sh=>sh&&sh.rows===rows):null;
+  const keys=new Set();(rows||[]).forEach(r=>Object.keys(r||{}).forEach(k=>keys.add(k)));
+  if(owner&&Array.isArray(owner.columnOrder))owner.columnOrder.forEach(k=>{if(keys.has(k)&&!result.includes(k))result.push(k);});
   (rows||[]).forEach(r=>Object.keys(r||{}).forEach(k=>{if(!result.includes(k))result.push(k)}));
   return result;
 };
@@ -1443,6 +1450,7 @@ $("addColumnBtn").onclick=()=>{
   if(columns(sheet().rows).includes(name.trim())) {alert("La columna ya existe.");return;}
   if(!sheet().rows.length) sheet().rows.push({[name.trim()]:""});
   else sheet().rows.forEach(r=>r[name.trim()]="");
+  if(Array.isArray(sheet().columnOrder)) sheet().columnOrder.push(name.trim());
   renderRecords();refreshDerivedViewsAfterRecordEdit();queueRecordsAutosave();
 };
 $("deleteColumnBtn").onclick=()=>{
@@ -1454,6 +1462,7 @@ $("deleteColumnBtn").onclick=()=>{
   if(!cols.includes(name)){alert("No existe una columna con ese nombre. Copiá el nombre tal como aparece en la tabla.");return;}
   if(!confirm(`¿Eliminar la columna «${name}» y todos sus datos de esta hoja? Esta acción no se puede deshacer después de guardar.`)) return;
   sheet().rows.forEach(r=>delete r[name]);
+  if(Array.isArray(sheet().columnOrder)) sheet().columnOrder=sheet().columnOrder.filter(c=>c!==name);
   renderRecords();refreshDerivedViewsAfterRecordEdit();queueRecordsAutosave();
   message("recordsStatus",`Columna «${name}» eliminada. Se guardará automáticamente.`);
 };
@@ -1478,6 +1487,41 @@ $("saveRecordsBtn").onclick=async()=>{
   catch(e){message("recordsStatus",e.message,true);}
 };
 $("importBtn").onclick=()=>$("excelFile").click();
+/* Toma del Excel original SOLO el orden de los encabezados y lo aplica a las hojas ya cargadas (mismo nombre).
+   No cambia filas, valores ni movimientos. */
+$("columnOrderBtn").onclick=()=>$("columnOrderFile").click();
+$("columnOrderFile").onchange=async e=>{
+  const f=e.target.files?.[0];if(!f)return;
+  try{
+    if(typeof XLSX==="undefined") throw new Error("No se pudo cargar el lector de Excel.");
+    const wb=XLSX.read(await f.arrayBuffer(),{type:"array",cellDates:false});
+    const names=wb.SheetNames||[];const fileBase=f.name.replace(/\.(xlsx|xls|xlsm|xlsb|csv)$/i,"").trim()||"Importación";
+    const applied=[];
+    names.forEach(wsName=>{
+      const matrix=XLSX.utils.sheet_to_json(wb.Sheets[wsName],{header:1,defval:"",raw:false,blankrows:false});
+      if(!matrix.length)return;
+      const raw=(matrix[0]||[]).map(v=>String(v??"").trim());
+      const maxCols=Math.max(raw.length,...matrix.map(r=>Array.isArray(r)?r.length:0));
+      const used=new Set(),headers=[];
+      for(let i=0;i<maxCols;i++){
+        const h=raw[i]??"";const hasData=matrix.slice(1).some(row=>String((row||[])[i]??"").trim()!=="");
+        if(h===""&&!hasData)continue;
+        let name=h||`Columna ${i+1}`,base=name,n=2;while(used.has(name))name=`${base} (${n++})`;used.add(name);headers.push(name);
+      }
+      const displayName=names.length===1?fileBase:`${fileBase} — ${wsName}`;
+      const target=book.sheets.find(sh=>sh.name===displayName)||book.sheets.find(sh=>norm(sh.name).endsWith(norm(wsName)))||(names.length===1?sheet():null);
+      if(!target)return;
+      const present=new Set(columns(target.rows));
+      if(!headers.some(h=>present.has(h)))return;
+      target.columnOrder=headers;applied.push(target.name);
+    });
+    if(!applied.length)throw new Error("No se encontró ninguna hoja cargada con los mismos encabezados que este Excel.");
+    renderAll();
+    await saveBook();
+    message("recordsStatus",`Orden de columnas restaurado según el Excel en: ${applied.join(" · ")}. No se modificó ningún dato.`);
+  }catch(err){message("recordsStatus","No se pudo ordenar las columnas: "+(err?.message||err),true);}
+  finally{e.target.value="";}
+};
 $("excelFile").onchange=async e=>{
   const f=e.target.files?.[0];
   if(!f) return;
@@ -1526,7 +1570,7 @@ $("excelFile").onchange=async e=>{
       const rows=matrix.slice(1).filter(row=>Array.isArray(row)&&keepIndexes.some(i=>String(row[i]??"").trim()!=="")).map(row=>{
         const obj={};headers.forEach((h,j)=>obj[h]=row[keepIndexes[j]]??"");return obj;
       });
-      imported.push({name:displayName,rows});
+      imported.push({name:displayName,rows,columnOrder:headers});
     }
     if(!imported.length) throw new Error(`Se detectaron ${worksheetNames.length} hoja(s), pero no se pudo leer ninguna. Hojas detectadas: ${worksheetNames.join(", ")}`);
 
@@ -1538,7 +1582,7 @@ ${collisions.map(x=>x.name).join("\n")}
     let firstImportedIndex=-1;
     for(const item of imported) {
       let i=book.sheets.findIndex(existing=>existing.name===item.name);
-      if(i>=0) book.sheets[i]={...book.sheets[i],rows:item.rows};
+      if(i>=0) book.sheets[i]={...book.sheets[i],rows:item.rows,columnOrder:item.columnOrder};
       else { i=book.sheets.length; book.sheets.push(item); }
       if(firstImportedIndex<0) firstImportedIndex=i;
     }
@@ -1770,6 +1814,7 @@ function inventoryRows() {
   rows.shipmentColumns=shipmentColumns.filter(col=>!col.received);
   return rows;
 }
+let inventoryStockOnly=false; // true solo mientras se genera el PDF «solo stock»
 function renderInventory() {
   const sheetPicker=$("inventorySheetSelect");
   if(sheetPicker){
@@ -1797,26 +1842,65 @@ function renderInventory() {
     ["Total de productos ofrecidos",rows.length,"Productos únicos según nombre y código"]
   ];
   $("inventoryStats").innerHTML=inventoryStats.map(([a,b,c])=>`<div class="stat"><span class="muted">${esc(a)}</span><strong>${esc(b)}</strong><small>${esc(c)}</small></div>`).join("");
-  const headers=["Producto","Código","Stock total","Trenque Lauquen","Consignación","En fabricación",...moneyCols];
-  shipmentColumns.forEach(col=>headers.push(col.label));
+  // Inicio muestra LAS MISMAS columnas que Registros y en el mismo orden (el del Excel),
+  // pero con el stock actualizado por ventas, consignaciones, fabricación y embarques.
+  // Registros no se modifica: sigue mostrando la base tal como se importó.
   const nameCol=$("productNameCol").value, codeCol=$("productCodeCol").value;
-  const findSource=r=>sourceRows.find(x=>
-    (r.code && codeCol && norm(x[codeCol]||"")===norm(r.code)) ||
-    ((!r.code || !codeCol) && nameCol && norm(x[nameCol]||"")===norm(r.name))
-  ) || sourceRows.find(x=>nameCol && norm(x[nameCol]||"")===norm(r.name));
-  const body=rows.map(r=>{
-    const shipmentTotal=shipmentColumns.filter(col=>!col.received).reduce((a,col)=>a+numberValue(r.shipmentValues?.[col.key]||0),0);
-    const totalRow=r.trenque+r.consignacion+r.fabricacion+shipmentTotal;
-    const source=findSource(r)||{};
-    const cells=[
-      `<td>${esc(r.name)}</td>`,`<td>${esc(r.code||"—")}</td>`,
-      `<td><strong>${totalRow}</strong></td>`,`<td>${r.trenque}</td>`,
-      `<td>${r.consignacion}</td>`,`<td>${r.fabricacion}</td>`
-    ];
-    moneyCols.forEach(col=>cells.push(`<td>${esc(moneyCellDisplay(source[col]))}</td>`));
-    shipmentColumns.forEach(col=>cells.push(`<td>${numberValue(r.shipmentValues?.[col.key]||0)}</td>`));
-    return '<tr>'+cells.join('')+'</tr>';
-  }).join("");
+  const loc=selectedLocationConfig();
+  const invSheet=book.sheets[sheetIndex];const invSheetName=invSheet?.name;
+  const sheetCols=invSheet?consDisplayColumns(invSheet,sourceCols):sourceCols;
+  const allShipments=book.embarques||[];
+  const shipForCol=c=>allShipments.find(rec=>rec.sheetKey===shipSheetKey(invSheetName,c)||rec.sheetKeyDetached===shipSheetKey(invSheetName,c));
+  const shipPending=(r,rec)=>(rec.receivedAt||rec.received)?0:numberValue(r.shipmentValues?.['shipment_'+(rec.id||rec.number)]||0);
+  const totalNames=['total general','stock total','total stock','total unidades','stock general'];
+  const kind={};
+  sheetCols.forEach(c=>{
+    if(c===nameCol)kind[c]={t:'name'};
+    else if(c===codeCol)kind[c]={t:'code'};
+    else if(c===loc.trenque)kind[c]={t:'trenque'};
+    else if(c===loc.consignacion)kind[c]={t:'consignacion'};
+    else if(c===loc.fabricacion)kind[c]={t:'fabricacion'};
+    else if(shipForCol(c))kind[c]={t:'ship',rec:shipForCol(c)};
+    else if(c===loc.embarques)kind[c]={t:'legacyShip'};
+    else if(!isMoneyColumn(c)&&totalNames.includes(norm(c)))kind[c]={t:'total'};
+    else kind[c]={t:'source'};
+  });
+  const used=new Set(Object.values(kind).map(k=>k.t));
+  const isPriceCol=c=>kind[c]?.t==='source'&&(isMoneyColumn(c)||/(importe|monto|\$)/i.test(String(c)));
+  const headers=inventoryStockOnly?sheetCols.filter(c=>!isPriceCol(c)):[...sheetCols];
+  // Lo que el Excel no tiene como columna se agrega al final para no perder información.
+  const extra=[];
+  if(!used.has('name'))extra.push(['Producto',{t:'name'}]);
+  if(!used.has('code'))extra.push(['Código',{t:'code'}]);
+  if(!used.has('total'))extra.push(['Stock total',{t:'total'}]);
+  if(!used.has('trenque'))extra.push(['Trenque Lauquen',{t:'trenque'}]);
+  if(!used.has('consignacion'))extra.push(['Consignación',{t:'consignacion'}]);
+  if(!used.has('fabricacion'))extra.push(['En fabricación',{t:'fabricacion'}]);
+  const linkedIds=new Set(Object.values(kind).filter(k=>k.t==='ship').map(k=>String(k.rec.id)));
+  shipmentColumns.filter(col=>!linkedIds.has(String(col.id))).forEach(col=>extra.push([col.label,{t:'shipCol',col}]));
+  extra.forEach(([h,k])=>{let name=h,n=2;while(headers.includes(name))name=`${h} (${n++})`;headers.push(name);kind[name]=k;});
+  const totalOf=r=>r.trenque+r.consignacion+r.fabricacion+r.embarques;
+  const cellFor=(r,src,c)=>{
+    const k=kind[c];
+    switch(k.t){
+      case 'name':return esc(r?.name??src?.[c]??'');
+      case 'code':return esc(r?.code||src?.[c]||'—');
+      case 'total':return r?`<strong>${totalOf(r)}</strong>`:'';
+      case 'trenque':case 'consignacion':case 'fabricacion':return r?String(r[k.t]):'';
+      case 'ship':return r?String(shipPending(r,k.rec)):'';
+      case 'legacyShip':return r?String(numberValue(r.legacyEmbarques)):'';
+      case 'shipCol':return r?String(numberValue(r.shipmentValues?.[k.col.key]||0)):'';
+      default:{const v=src?.[c];return esc(isMoneyColumn(c)?moneyCellDisplay(v):(v??''));}
+    }
+  };
+  const itemFor=x=>{
+    const code=codeCol?String(x[codeCol]??'').trim():'',name=nameCol?String(x[nameCol]??'').trim():'';
+    return (code&&rows.find(r=>r.code&&norm(r.code)===norm(code)))||(name&&rows.find(r=>norm(r.name)===norm(name)))||null;
+  };
+  const shown=new Set();const bodyRows=[];
+  sourceRows.forEach(x=>{const r=itemFor(x);if(!r||shown.has(r.key))return;shown.add(r.key);bodyRows.push({r,src:x});});
+  rows.filter(r=>!shown.has(r.key)).forEach(r=>bodyRows.push({r,src:null}));
+  const body=bodyRows.map(({r,src})=>'<tr>'+headers.map(c=>`<td>${cellFor(r,src,c)}</td>`).join('')+'</tr>').join("");
   $("inventoryTable").innerHTML='<table data-width-key="inventory"><thead><tr>'+headers.map(h=>`<th>${esc(h)}</th>`).join("")+'</tr></thead><tbody>'+body+'</tbody></table>';
   applyColumnWidths($("inventoryTable").querySelector("table"),"inventory",headers);
   renderAvailabilityOptions();
@@ -2364,11 +2448,15 @@ function applyPublicMode() {
   $("addAvailabilityBtn").disabled=false;
   $("clearAvailabilityBtn").disabled=false;
   $("downloadInventoryPdfBtn").disabled=false;
+  if($("downloadInventoryStockPdfBtn"))$("downloadInventoryStockPdfBtn").disabled=false;
   renderInventory();
   renderAvailabilityChart();
 }
 
-$("downloadInventoryPdfBtn").onclick=()=>{
+$("downloadInventoryPdfBtn").onclick=()=>printInventoryPdf(false);
+$("downloadInventoryStockPdfBtn").onclick=()=>printInventoryPdf(true);
+function printInventoryPdf(stockOnly){
+  inventoryStockOnly=!!stockOnly;
   renderInventory();
   // Hoja A4 horizontal; la letra se achica según la cantidad de columnas para que todas entren en el ancho de la hoja.
   const cols=$("inventoryTable").querySelectorAll("thead th").length||1;
@@ -2392,11 +2480,12 @@ $("downloadInventoryPdfBtn").onclick=()=>{
   document.getElementById("inventoryLandscapeStyle")?.remove();
   document.head.appendChild(printStyle);
   document.body.classList.add("print-inventory");
-  const cleanup=()=>{document.body.classList.remove("print-inventory");printStyle.remove();};
+  let cleaned=false;
+  const cleanup=()=>{if(cleaned)return;cleaned=true;document.body.classList.remove("print-inventory");printStyle.remove();if(inventoryStockOnly){inventoryStockOnly=false;renderInventory();}};
   window.addEventListener("afterprint",cleanup,{once:true});
   window.print();
   setTimeout(cleanup,1500);
-};
+}
 ["locTrenque","locConsignacion","locFabricacion","locEmbarques"].forEach(id=>$(id).addEventListener("change",()=>{renderInventory();}));
 
 function showProduct(product,c) {
